@@ -31,6 +31,11 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 		handleManifest(w, r, path)
 		return
 	}
+	// /_catalog
+	if path == "_catalog" && r.Method == http.MethodGet {
+		handleCatalog(w, r)
+		return
+	}
 
 	w.WriteHeader(http.StatusNotFound)
 	w.Write([]byte("Not found"))
@@ -100,4 +105,22 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+}
+
+func handleCatalog(w http.ResponseWriter, r *http.Request) {
+	entries, err := ftpClient.List("")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to list repositories"))
+		return
+	}
+	repos := []string{}
+	for _, entry := range entries {
+		if entry.Type == 1 { // Directory
+			repos = append(repos, entry.Name)
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf(`{"repositories":%q}`, repos)))
 } 

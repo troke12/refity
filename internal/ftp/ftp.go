@@ -37,4 +37,8 @@ func (f *FTPClient) Download(path string) ([]byte, error) {
 
 func (f *FTPClient) Close() error {
 	return f.conn.Quit()
+}
+
+func (f *FTPClient) List(path string) ([]*ftp.Entry, error) {
+	return f.conn.List(path)
 } 
