@@ -107,7 +107,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 	}
 }
 
-func handleCatalog(w http.ResponseWriter, r *http.Request) {
+func handleCatalog(w http.ResponseWriter, _ *http.Request) {
 	entries, err := ftpClient.List("")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
