@@ -82,7 +82,7 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
-	err = ftpClient.Upload(uploadPath, blob)
+	err = sftpClient.Upload(uploadPath, blob)
 	if err != nil {
 		log.Printf("uploadBlobData: failed to upload blob to FTP: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -98,7 +98,7 @@ func handleBlobDownload(w http.ResponseWriter, _ *http.Request, path string) {
 	name := strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/")
 	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, strings.Split(path, "/blobs/")[1])
 	blobPath = strings.TrimLeft(blobPath, "/")
-	blob, err := ftpClient.Download(blobPath)
+	blob, err := sftpClient.Download(blobPath)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Blob not found on FTP"))
@@ -121,7 +121,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			w.Write([]byte("Failed to read manifest"))
 			return
 		}
-		err = ftpClient.Upload(manifestPath, manifest)
+		err = sftpClient.Upload(manifestPath, manifest)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to upload manifest to FTP"))
@@ -130,7 +130,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("Manifest uploaded"))
 	case http.MethodGet:
-		manifest, err := ftpClient.Download(manifestPath)
+		manifest, err := sftpClient.Download(manifestPath)
 		if err != nil {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("Manifest not found on FTP"))
@@ -144,7 +144,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 }
 
 func handleCatalog(w http.ResponseWriter, _ *http.Request) {
-	entries, err := ftpClient.List("")
+	entries, err := sftpClient.List("")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to list repositories"))
@@ -152,8 +152,8 @@ func handleCatalog(w http.ResponseWriter, _ *http.Request) {
 	}
 	repos := []string{}
 	for _, entry := range entries {
-		if entry.Type == 1 { // Directory
-			repos = append(repos, entry.Name)
+		if entry.IsDir() {
+			repos = append(repos, entry.Name())
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -191,7 +191,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	if len(body) == 0 {
 		// Move/rename file dari uploads ke blobs
-		err = ftpClient.Rename(uploadPath, blobPath)
+		err = sftpClient.Rename(uploadPath, blobPath)
 		if err != nil {
 			log.Printf("commitBlobUpload: failed to move blob on FTP: %v (from: %s, to: %s)", err, uploadPath, blobPath)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -200,7 +200,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		}
 	} else {
 		// Jika body ada, upload ulang ke blobs
-		err = ftpClient.Upload(blobPath, body)
+		err = sftpClient.Upload(blobPath, body)
 		if err != nil {
 			log.Printf("commitBlobUpload: failed to upload blob to FTP: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)

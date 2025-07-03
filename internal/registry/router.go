@@ -7,11 +7,11 @@ import (
 )
 
 var (
-	ftpClient *ftp.FTPClient
+	sftpClient *ftp.SFTPClient
 )
 
-func NewRouterWithDeps(f *ftp.FTPClient, c *config.Config) http.Handler {
-	ftpClient = f
+func NewRouterWithDeps(f *ftp.SFTPClient, c *config.Config) http.Handler {
+	sftpClient = f
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v2/", RegistryHandler)
 	return mux
