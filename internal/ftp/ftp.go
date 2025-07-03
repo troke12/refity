@@ -5,6 +5,8 @@ import (
 	"time"
 	"bytes"
 	"io"
+	"path"
+	"strings"
 )
 
 type FTPClient struct {
@@ -22,8 +24,31 @@ func NewFTPClient(addr, user, pass string) (*FTPClient, error) {
 	return &FTPClient{conn: c}, nil
 }
 
-func (f *FTPClient) Upload(path string, data []byte) error {
-	return f.conn.Stor(path, bytes.NewReader(data))
+func (f *FTPClient) ensureDir(dirPath string) error {
+	if dirPath == "" || dirPath == "." || dirPath == "/" {
+		return nil
+	}
+	parts := strings.Split(dirPath, "/")
+	current := ""
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		current = path.Join(current, p)
+		if err := f.conn.MakeDir(current); err != nil && !strings.Contains(err.Error(), "File exists") {
+			// Ignore error if dir already exists
+			return err
+		}
+	}
+	return nil
+}
+
+func (f *FTPClient) Upload(filePath string, data []byte) error {
+	dir := path.Dir(filePath)
+	if err := f.ensureDir(dir); err != nil {
+		return err
+	}
+	return f.conn.Stor(filePath, bytes.NewReader(data))
 }
 
 func (f *FTPClient) Download(path string) ([]byte, error) {
