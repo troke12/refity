@@ -80,7 +80,7 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Failed to read blob data"))
 		return
 	}
-	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
+	uploadPath := fmt.Sprintf("./registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
 	err = ftpClient.Upload(uploadPath, blob)
 	if err != nil {
@@ -96,7 +96,7 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 
 func handleBlobDownload(w http.ResponseWriter, _ *http.Request, path string) {
 	name := strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/")
-	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, strings.Split(path, "/blobs/")[1])
+	blobPath := fmt.Sprintf("./registry/%s/blobs/%s", name, strings.Split(path, "/blobs/")[1])
 	blobPath = strings.TrimLeft(blobPath, "/")
 	blob, err := ftpClient.Download(blobPath)
 	if err != nil {
@@ -111,7 +111,7 @@ func handleBlobDownload(w http.ResponseWriter, _ *http.Request, path string) {
 func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 	name := strings.TrimPrefix(strings.Split(path, "/manifests/")[0], "/")
 	ref := strings.Split(path, "/manifests/")[1]
-	manifestPath := fmt.Sprintf("registry/%s/manifests/%s", name, ref)
+	manifestPath := fmt.Sprintf("./registry/%s/manifests/%s", name, ref)
 	manifestPath = strings.TrimLeft(manifestPath, "/")
 	switch r.Method {
 	case http.MethodPut:
@@ -178,9 +178,9 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Missing digest query param"))
 		return
 	}
-	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, strings.ReplaceAll(digest, ":", "_"))
+	blobPath := fmt.Sprintf("./registry/%s/blobs/%s", name, strings.ReplaceAll(digest, ":", "_"))
 	blobPath = strings.TrimLeft(blobPath, "/")
-	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
+	uploadPath := fmt.Sprintf("./registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
