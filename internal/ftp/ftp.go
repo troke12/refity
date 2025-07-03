@@ -7,6 +7,7 @@ import (
 	"io"
 	"path"
 	"strings"
+	"log"
 )
 
 type FTPClient struct {
@@ -36,7 +37,7 @@ func (f *FTPClient) ensureDir(dirPath string) error {
 		}
 		current = path.Join(current, p)
 		if err := f.conn.MakeDir(current); err != nil && !strings.Contains(err.Error(), "File exists") {
-			// Ignore error if dir already exists
+			log.Printf("ensureDir: failed to create subfolder '%s': %v", current, err)
 			return err
 		}
 	}
