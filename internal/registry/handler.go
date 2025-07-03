@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"fmt"
+	"time"
 )
 
 // Handler untuk endpoint Docker Registry API v2
@@ -18,7 +19,12 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 
 	// /<name>/blobs/uploads/
 	if strings.HasSuffix(path, "/blobs/uploads/") && r.Method == http.MethodPost {
-		handleBlobUpload(w, r, path)
+		initiateBlobUpload(w, r, path)
+		return
+	}
+	// /<name>/blobs/uploads/<upload_id>
+	if strings.Contains(path, "/blobs/uploads/") && (r.Method == http.MethodPatch || r.Method == http.MethodPut) {
+		uploadBlobData(w, r, path)
 		return
 	}
 	// /<name>/blobs/<digest>
@@ -41,21 +47,36 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Not found"))
 }
 
-func handleBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
+func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
+	uploadID := fmt.Sprintf("%d", time.Now().UnixNano())
+	location := fmt.Sprintf("/v2/%sblobs/uploads/%s", strings.Split(path, "/blobs/")[0], uploadID)
+	w.Header().Set("Location", location)
+	w.Header().Set("Range", "0-0")
+	w.WriteHeader(http.StatusAccepted)
+	w.Write([]byte(""))
+}
+
+func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	name := strings.Split(path, "/blobs/")[0]
+	parts := strings.Split(path, "/blobs/uploads/")
+	uploadID := ""
+	if len(parts) > 1 {
+		uploadID = parts[1]
+	}
 	blob, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to read blob"))
+		w.Write([]byte("Failed to read blob data"))
 		return
 	}
-	blobPath := fmt.Sprintf("%s/blobs/%d", name, len(blob))
+	blobPath := fmt.Sprintf("%s/blobs/%s", name, uploadID)
 	err = ftpClient.Upload(blobPath, blob)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to upload blob to FTP"))
 		return
 	}
+	w.Header().Set("Location", r.URL.Path)
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("Blob uploaded"))
 }
