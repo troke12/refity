@@ -26,7 +26,7 @@ func NewFTPClient(addr, user, pass string) (*FTPClient, error) {
 }
 
 func (f *FTPClient) ensureDir(dirPath string) error {
-	dirPath = strings.TrimPrefix(dirPath, "/")
+	dirPath = strings.TrimLeft(dirPath, "/")
 	if dirPath == "" || dirPath == "." || dirPath == "/" {
 		return nil
 	}
@@ -37,6 +37,7 @@ func (f *FTPClient) ensureDir(dirPath string) error {
 			continue
 		}
 		current = path.Join(current, p)
+		current = strings.TrimLeft(current, "/")
 		if err := f.conn.MakeDir(current); err != nil && !strings.Contains(err.Error(), "File exists") {
 			log.Printf("ensureDir: failed to create subfolder '%s': %v", current, err)
 			return err
@@ -46,8 +47,9 @@ func (f *FTPClient) ensureDir(dirPath string) error {
 }
 
 func (f *FTPClient) Upload(filePath string, data []byte) error {
-	filePath = strings.TrimPrefix(filePath, "/")
+	filePath = strings.TrimLeft(filePath, "/")
 	dir := path.Dir(filePath)
+	dir = strings.TrimLeft(dir, "/")
 	if err := f.ensureDir(dir); err != nil {
 		return err
 	}
@@ -55,7 +57,7 @@ func (f *FTPClient) Upload(filePath string, data []byte) error {
 }
 
 func (f *FTPClient) Download(filePath string) ([]byte, error) {
-	filePath = strings.TrimPrefix(filePath, "/")
+	filePath = strings.TrimLeft(filePath, "/")
 	r, err := f.conn.Retr(filePath)
 	if err != nil {
 		return nil, err
@@ -69,12 +71,12 @@ func (f *FTPClient) Close() error {
 }
 
 func (f *FTPClient) List(path string) ([]*ftp.Entry, error) {
-	path = strings.TrimPrefix(path, "/")
+	path = strings.TrimLeft(path, "/")
 	return f.conn.List(path)
 }
 
 func (f *FTPClient) Rename(from, to string) error {
-	from = strings.TrimPrefix(from, "/")
-	to = strings.TrimPrefix(to, "/")
+	from = strings.TrimLeft(from, "/")
+	to = strings.TrimLeft(to, "/")
 	return f.conn.Rename(from, to)
 } 
