@@ -71,7 +71,7 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Invalid upload path"))
 		return
 	}
-	name := strings.TrimSuffix(parts[0], "/")
+	name := strings.TrimPrefix(strings.TrimSuffix(parts[0], "/"), "/")
 	uploadID := parts[1]
 	blob, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -81,6 +81,7 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	uploadPath := fmt.Sprintf("%s/blobs/uploads/%s", name, uploadID)
+	uploadPath = strings.TrimPrefix(uploadPath, "/")
 	err = ftpClient.Upload(uploadPath, blob)
 	if err != nil {
 		log.Printf("uploadBlobData: failed to upload blob to FTP: %v", err)
@@ -94,8 +95,9 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 }
 
 func handleBlobDownload(w http.ResponseWriter, _ *http.Request, path string) {
-	name := strings.Split(path, "/blobs/")[0]
+	name := strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/")
 	blobPath := fmt.Sprintf("%s/blobs/%s", name, strings.Split(path, "/blobs/")[1])
+	blobPath = strings.TrimPrefix(blobPath, "/")
 	blob, err := ftpClient.Download(blobPath)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -166,7 +168,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Invalid commit path"))
 		return
 	}
-	name := strings.TrimSuffix(parts[0], "/")
+	name := strings.TrimPrefix(strings.TrimSuffix(parts[0], "/"), "/")
 	uploadID := parts[1]
 	digest := r.URL.Query().Get("digest")
 	if digest == "" {
@@ -176,7 +178,9 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	blobPath := fmt.Sprintf("%s/blobs/%s", name, strings.ReplaceAll(digest, ":", "_"))
+	blobPath = strings.TrimPrefix(blobPath, "/")
 	uploadPath := fmt.Sprintf("%s/blobs/uploads/%s", name, uploadID)
+	uploadPath = strings.TrimPrefix(uploadPath, "/")
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("commitBlobUpload: failed to read blob data: %v", err)
