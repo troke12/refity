@@ -22,8 +22,13 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 		initiateBlobUpload(w, r, path)
 		return
 	}
-	// /<name>/blobs/uploads/<upload_id>
-	if strings.Contains(path, "/blobs/uploads/") && (r.Method == http.MethodPatch || r.Method == http.MethodPut) {
+	// /<name>/blobs/uploads/<upload_id>?digest=sha256:...
+	if strings.Contains(path, "/blobs/uploads/") && r.Method == http.MethodPut && r.URL.Query().Get("digest") != "" {
+		commitBlobUpload(w, r, path)
+		return
+	}
+	// /<name>/blobs/uploads/<upload_id> (PATCH)
+	if strings.Contains(path, "/blobs/uploads/") && r.Method == http.MethodPatch {
 		uploadBlobData(w, r, path)
 		return
 	}
@@ -144,4 +149,32 @@ func handleCatalog(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(fmt.Sprintf(`{"repositories":%q}`, repos)))
+}
+
+func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
+	name := strings.Split(path, "/blobs/")[0]
+	digest := r.URL.Query().Get("digest")
+	if digest == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Missing digest query param"))
+		return
+	}
+	blob, err := io.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to read blob data"))
+		return
+	}
+	// Simpan blob ke FTP dengan nama digest
+	blobPath := fmt.Sprintf("%s/blobs/%s", name, strings.ReplaceAll(digest, ":", "_"))
+	err = ftpClient.Upload(blobPath, blob)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to upload blob to FTP"))
+		return
+	}
+	w.Header().Set("Location", fmt.Sprintf("/v2/%sblobs/%s", name, digest))
+	w.Header().Set("Docker-Content-Digest", digest)
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("Blob committed"))
 } 
