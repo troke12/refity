@@ -77,11 +77,11 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Failed to read blob data"))
 		return
 	}
-	blobPath := fmt.Sprintf("%s/blobs/uploads/%s", name, uploadID)
-	err = ftpClient.Upload(blobPath, blob)
+	uploadPath := fmt.Sprintf("%s/blobs/uploads/%s", name, uploadID)
+	err = ftpClient.Upload(uploadPath, blob)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to upload blob to FTP"))
+		w.Write([]byte("Failed to upload blob to FTP: "+err.Error()))
 		return
 	}
 	w.Header().Set("Location", r.URL.Path)
@@ -174,7 +174,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to read blob data"))
+		w.Write([]byte("Failed to read blob data: "+err.Error()))
 		return
 	}
 	if len(body) == 0 {
@@ -182,7 +182,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		err = ftpClient.Rename(uploadPath, blobPath)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to move blob on FTP"))
+			w.Write([]byte("Failed to move blob on FTP: "+err.Error()))
 			return
 		}
 	} else {
@@ -190,7 +190,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		err = ftpClient.Upload(blobPath, body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to upload blob to FTP"))
+			w.Write([]byte("Failed to upload blob to FTP: "+err.Error()))
 			return
 		}
 	}
