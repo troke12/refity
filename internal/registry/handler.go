@@ -55,7 +55,7 @@ func handleBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	w.Write([]byte("Blob uploaded"))
 }
 
-func handleBlobDownload(w http.ResponseWriter, r *http.Request, path string) {
+func handleBlobDownload(w http.ResponseWriter, _ *http.Request, path string) {
 	name := strings.Split(path, "/blobs/")[0]
 	blobPath := fmt.Sprintf("%s/blobs/%s", name, strings.Split(path, "/blobs/")[1])
 	blob, err := ftpClient.Download(blobPath)
