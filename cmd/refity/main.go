@@ -27,10 +27,12 @@ func main() {
 	if sftpPort == "" {
 		sftpPort = "23"
 	}
+	log.Printf("Connecting to SFTP: host=%s port=%s user=%s", cfg.FTPHost, sftpPort, cfg.FTPUsername)
 	sftpClient, err := ftp.NewSFTPClient(cfg.FTPHost, sftpPort, cfg.FTPUsername, cfg.FTPPassword)
 	if err != nil {
 		log.Fatalf("Failed to connect to SFTP: %v", err)
 	}
+	log.Println("SFTP connection established successfully")
 	defer sftpClient.Close()
 
 	// Inject SFTP client & config ke registry handler (pakai closure/global sementara)
