@@ -54,7 +54,8 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 
 func initiateBlobUpload(w http.ResponseWriter, _ *http.Request, path string) {
 	uploadID := fmt.Sprintf("%d", time.Now().UnixNano())
-	location := fmt.Sprintf("/v2/%sblobs/uploads/%s", strings.Split(path, "/blobs/")[0], uploadID)
+	name := strings.TrimSuffix(strings.Split(path, "/blobs/")[0], "/")
+	location := fmt.Sprintf("/v2/%s/blobs/uploads/%s", name, uploadID)
 	w.Header().Set("Location", location)
 	w.Header().Set("Range", "0-0")
 	w.WriteHeader(http.StatusAccepted)
@@ -62,19 +63,21 @@ func initiateBlobUpload(w http.ResponseWriter, _ *http.Request, path string) {
 }
 
 func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
-	name := strings.Split(path, "/blobs/")[0]
-	parts := strings.Split(path, "/blobs/uploads/")
-	uploadID := ""
-	if len(parts) > 1 {
-		uploadID = parts[1]
+	parts := strings.SplitN(path, "/blobs/uploads/", 2)
+	if len(parts) != 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Invalid upload path"))
+		return
 	}
+	name := strings.TrimSuffix(parts[0], "/")
+	uploadID := parts[1]
 	blob, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to read blob data"))
 		return
 	}
-	blobPath := fmt.Sprintf("%s/blobs/%s", name, uploadID)
+	blobPath := fmt.Sprintf("%s/blobs/uploads/%s", name, uploadID)
 	err = ftpClient.Upload(blobPath, blob)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -152,7 +155,13 @@ func handleCatalog(w http.ResponseWriter, _ *http.Request) {
 }
 
 func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
-	name := strings.Split(path, "/blobs/")[0]
+	parts := strings.SplitN(path, "/blobs/uploads/", 2)
+	if len(parts) != 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Invalid commit path"))
+		return
+	}
+	name := strings.TrimSuffix(parts[0], "/")
 	digest := r.URL.Query().Get("digest")
 	if digest == "" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -165,7 +174,6 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Failed to read blob data"))
 		return
 	}
-	// Simpan blob ke FTP dengan nama digest
 	blobPath := fmt.Sprintf("%s/blobs/%s", name, strings.ReplaceAll(digest, ":", "_"))
 	err = ftpClient.Upload(blobPath, blob)
 	if err != nil {
@@ -173,7 +181,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Failed to upload blob to FTP"))
 		return
 	}
-	w.Header().Set("Location", fmt.Sprintf("/v2/%sblobs/%s", name, digest))
+	w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
 	w.Header().Set("Docker-Content-Digest", digest)
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("Blob committed"))
