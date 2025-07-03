@@ -47,7 +47,7 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Not found"))
 }
 
-func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
+func initiateBlobUpload(w http.ResponseWriter, _ *http.Request, path string) {
 	uploadID := fmt.Sprintf("%d", time.Now().UnixNano())
 	location := fmt.Sprintf("/v2/%sblobs/uploads/%s", strings.Split(path, "/blobs/")[0], uploadID)
 	w.Header().Set("Location", location)
