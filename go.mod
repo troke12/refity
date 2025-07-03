@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/stretchr/testify v1.8.3 // indirect
 	golang.org/x/sys v0.33.0 // indirect
