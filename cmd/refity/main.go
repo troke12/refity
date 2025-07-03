@@ -4,7 +4,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"fmt"
 
 	"refity/internal/config"
 	"refity/internal/ftp"
@@ -24,15 +23,18 @@ func main() {
 		log.Fatal("FTP config must be set in environment variables")
 	}
 
-	ftpAddr := fmt.Sprintf("%s:%s", cfg.FTPHost, cfg.FTPPort)
-	ftpClient, err := ftp.NewFTPClient(ftpAddr, cfg.FTPUsername, cfg.FTPPassword)
-	if err != nil {
-		log.Fatalf("Failed to connect to FTP: %v", err)
+	sftpPort := cfg.FTPPort
+	if sftpPort == "" {
+		sftpPort = "23"
 	}
-	defer ftpClient.Close()
+	sftpClient, err := ftp.NewSFTPClient(cfg.FTPHost, sftpPort, cfg.FTPUsername, cfg.FTPPassword)
+	if err != nil {
+		log.Fatalf("Failed to connect to SFTP: %v", err)
+	}
+	defer sftpClient.Close()
 
-	// Inject FTP client & config ke registry handler (pakai closure/global sementara)
-	regRouter := registry.NewRouterWithDeps(ftpClient, cfg)
+	// Inject SFTP client & config ke registry handler (pakai closure/global sementara)
+	regRouter := registry.NewRouterWithDeps(sftpClient, cfg)
 
 	authRouter := auth.BasicAuthMiddleware(cfg.RegistryUsername, cfg.RegistryPassword, regRouter)
 
