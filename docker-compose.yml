@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  refity:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+    depends_on:
+      - ftp
+  ftp:
+    image: delfer/alpine-ftp-server
+    environment:
+      - USERS=ftpuser:ftppass:1001
+    ports:
+      - "21:21"
+      - "21000-21010:21000-21010" 
