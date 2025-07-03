@@ -72,7 +72,8 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 	name := strings.Split(path, "/manifests/")[0]
 	ref := strings.Split(path, "/manifests/")[1]
 	manifestPath := fmt.Sprintf("%s/manifests/%s", name, ref)
-	if r.Method == http.MethodPut {
+	switch r.Method {
+	case http.MethodPut:
 		manifest, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -87,8 +88,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		}
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("Manifest uploaded"))
-		return
-	} else if r.Method == http.MethodGet {
+	case http.MethodGet:
 		manifest, err := ftpClient.Download(manifestPath)
 		if err != nil {
 			w.WriteHeader(http.StatusNotFound)
@@ -97,7 +97,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		}
 		w.WriteHeader(http.StatusOK)
 		w.Write(manifest)
-		return
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
-	w.WriteHeader(http.StatusMethodNotAllowed)
 } 
