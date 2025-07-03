@@ -66,4 +66,8 @@ func (f *FTPClient) Close() error {
 
 func (f *FTPClient) List(path string) ([]*ftp.Entry, error) {
 	return f.conn.List(path)
+}
+
+func (f *FTPClient) Rename(from, to string) error {
+	return f.conn.Rename(from, to)
 } 

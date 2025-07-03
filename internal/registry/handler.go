@@ -162,24 +162,37 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	name := strings.TrimSuffix(parts[0], "/")
+	uploadID := parts[1]
 	digest := r.URL.Query().Get("digest")
 	if digest == "" {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Missing digest query param"))
 		return
 	}
-	blob, err := io.ReadAll(r.Body)
+	blobPath := fmt.Sprintf("%s/blobs/%s", name, strings.ReplaceAll(digest, ":", "_"))
+	uploadPath := fmt.Sprintf("%s/blobs/uploads/%s", name, uploadID)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to read blob data"))
 		return
 	}
-	blobPath := fmt.Sprintf("%s/blobs/%s", name, strings.ReplaceAll(digest, ":", "_"))
-	err = ftpClient.Upload(blobPath, blob)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to upload blob to FTP"))
-		return
+	if len(body) == 0 {
+		// Move/rename file dari uploads ke blobs
+		err = ftpClient.Rename(uploadPath, blobPath)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to move blob on FTP"))
+			return
+		}
+	} else {
+		// Jika body ada, upload ulang ke blobs
+		err = ftpClient.Upload(blobPath, body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to upload blob to FTP"))
+			return
+		}
 	}
 	w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
 	w.Header().Set("Docker-Content-Digest", digest)
