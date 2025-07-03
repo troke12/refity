@@ -26,6 +26,7 @@ func NewFTPClient(addr, user, pass string) (*FTPClient, error) {
 }
 
 func (f *FTPClient) ensureDir(dirPath string) error {
+	dirPath = strings.TrimPrefix(dirPath, "/")
 	if dirPath == "" || dirPath == "." || dirPath == "/" {
 		return nil
 	}
@@ -45,6 +46,7 @@ func (f *FTPClient) ensureDir(dirPath string) error {
 }
 
 func (f *FTPClient) Upload(filePath string, data []byte) error {
+	filePath = strings.TrimPrefix(filePath, "/")
 	dir := path.Dir(filePath)
 	if err := f.ensureDir(dir); err != nil {
 		return err
@@ -52,8 +54,9 @@ func (f *FTPClient) Upload(filePath string, data []byte) error {
 	return f.conn.Stor(filePath, bytes.NewReader(data))
 }
 
-func (f *FTPClient) Download(path string) ([]byte, error) {
-	r, err := f.conn.Retr(path)
+func (f *FTPClient) Download(filePath string) ([]byte, error) {
+	filePath = strings.TrimPrefix(filePath, "/")
+	r, err := f.conn.Retr(filePath)
 	if err != nil {
 		return nil, err
 	}
@@ -66,9 +69,12 @@ func (f *FTPClient) Close() error {
 }
 
 func (f *FTPClient) List(path string) ([]*ftp.Entry, error) {
+	path = strings.TrimPrefix(path, "/")
 	return f.conn.List(path)
 }
 
 func (f *FTPClient) Rename(from, to string) error {
+	from = strings.TrimPrefix(from, "/")
+	to = strings.TrimPrefix(to, "/")
 	return f.conn.Rename(from, to)
 } 
