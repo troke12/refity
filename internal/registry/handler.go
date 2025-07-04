@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 	"log"
+	godigest "github.com/opencontainers/go-digest"
 )
 
 // Handler untuk endpoint Docker Registry API v2
@@ -82,11 +83,11 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
-	err = storageDriver.PutContent(r.Context(), uploadPath, blob)
+	err = localDriver.PutContent(r.Context(), uploadPath, blob)
 	if err != nil {
-		log.Printf("uploadBlobData: failed to upload blob to SFTP: %v", err)
+		log.Printf("uploadBlobData: failed to write blob to local: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to upload blob to SFTP: "+err.Error()))
+		w.Write([]byte("Failed to write blob to local: "+err.Error()))
 		return
 	}
 	w.Header().Set("Location", r.URL.Path)
@@ -98,7 +99,7 @@ func handleBlobDownload(w http.ResponseWriter, _ *http.Request, path string) {
 	name := strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/")
 	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, strings.Split(path, "/blobs/")[1])
 	blobPath = strings.TrimLeft(blobPath, "/")
-	blob, err := storageDriver.GetContent(nil, blobPath)
+	blob, err := sftpDriver.GetContent(nil, blobPath)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Blob not found on SFTP"))
@@ -121,16 +122,19 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			w.Write([]byte("Failed to read manifest"))
 			return
 		}
-		err = storageDriver.PutContent(r.Context(), manifestPath, manifest)
+		// Hitung digest manifest
+		manifestDigest := godigest.FromBytes(manifest)
+		err = localDriver.PutContent(r.Context(), manifestPath, manifest)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to upload manifest to SFTP"))
+			w.Write([]byte("Failed to write manifest to local"))
 			return
 		}
+		w.Header().Set("Docker-Content-Digest", manifestDigest.String())
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("Manifest uploaded"))
 	case http.MethodGet:
-		manifest, err := storageDriver.GetContent(nil, manifestPath)
+		manifest, err := sftpDriver.GetContent(nil, manifestPath)
 		if err != nil {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("Manifest not found on SFTP"))
@@ -144,7 +148,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 }
 
 func handleCatalog(w http.ResponseWriter, _ *http.Request) {
-	entries, err := storageDriver.List(nil, "registry")
+	entries, err := sftpDriver.List(nil, "registry")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to list repositories"))
@@ -188,26 +192,72 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	if len(body) == 0 {
-		// Move/rename file dari uploads ke blobs
-		err = storageDriver.Move(r.Context(), uploadPath, blobPath)
+		// Move/rename file dari uploads ke blobs di local
+		err = localDriver.Move(r.Context(), uploadPath, blobPath)
 		if err != nil {
-			log.Printf("commitBlobUpload: failed to move blob on SFTP: %v (from: %s, to: %s)", err, uploadPath, blobPath)
+			log.Printf("commitBlobUpload: failed to move blob on local: %v (from: %s, to: %s)", err, uploadPath, blobPath)
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to move blob on SFTP: "+err.Error()))
+			w.Write([]byte("Failed to move blob on local: "+err.Error()))
 			return
 		}
 	} else {
-		// Jika body ada, upload ulang ke blobs
-		err = storageDriver.PutContent(r.Context(), blobPath, body)
+		// Jika body ada, upload ulang ke blobs di local
+		err = localDriver.PutContent(r.Context(), blobPath, body)
 		if err != nil {
-			log.Printf("commitBlobUpload: failed to upload blob to SFTP: %v", err)
+			log.Printf("commitBlobUpload: failed to write blob to local: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to upload blob to SFTP: "+err.Error()))
+			w.Write([]byte("Failed to write blob to local: "+err.Error()))
 			return
 		}
 	}
-	w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, digest))
-	w.Header().Set("Docker-Content-Digest", digest)
+	// Validasi digest: baca file, hitung digest, bandingkan
+	localData, err := localDriver.GetContent(r.Context(), blobPath)
+	if err != nil {
+		log.Printf("commitBlobUpload: failed to read blob from local: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to read blob from local: "+err.Error()))
+		return
+	}
+	calculated := godigest.FromBytes(localData)
+	parsedDigest, err := godigest.Parse(digest)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid checksum digest format (parse)"))
+		return
+	}
+	if calculated != parsedDigest {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid checksum digest format (mismatch)"))
+		return
+	}
+	// Setelah valid, upload ke SFTP secara async
+	ctx := r.Context()
+	go func(localPath, sftpPath string, data []byte) {
+		log.Printf("[async SFTP] Start upload: %s -> %s", localPath, sftpPath)
+		maxRetry := 5
+		var err error
+		for i := 0; i < maxRetry; i++ {
+			err = sftpDriver.PutContent(ctx, sftpPath, data)
+			if err == nil {
+				log.Printf("[async SFTP] Success upload: %s -> %s (try %d)", localPath, sftpPath, i+1)
+				break
+			}
+			log.Printf("[async SFTP] Retry %d: failed to upload to SFTP: %v", i+1, err)
+			time.Sleep(2 * time.Second)
+		}
+		if err != nil {
+			log.Printf("[async SFTP] FINAL FAIL: %v", err)
+			return
+		}
+		err = localDriver.Delete(ctx, localPath)
+		if err != nil {
+			log.Printf("[async SFTP] Failed to delete local: %v", err)
+		} else {
+			log.Printf("[async SFTP] Deleted local: %s", localPath)
+		}
+	}(blobPath, blobPath, localData)
+	w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, calculated.String()))
+	w.Header().Set("Docker-Content-Digest", calculated.String())
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("Blob committed"))
+	w.Write([]byte("Blob committed (async SFTP, digest validated)"))
 } 

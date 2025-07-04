@@ -6,6 +6,7 @@ toolchain go1.23.2
 
 require (
 	github.com/joho/godotenv v1.5.1
+	github.com/opencontainers/go-digest v1.0.0
 	github.com/pkg/sftp v1.13.5
 	golang.org/x/crypto v0.17.0
 )
