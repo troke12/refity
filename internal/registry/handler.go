@@ -178,7 +178,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Missing digest query param"))
 		return
 	}
-	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, strings.ReplaceAll(digest, ":", "_"))
+	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, digest)
 	blobPath = strings.TrimLeft(blobPath, "/")
 	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")

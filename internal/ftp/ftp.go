@@ -53,6 +53,9 @@ func (f *SFTPClient) ensureDir(dirPath string) error {
 		current = strings.TrimLeft(current, "/")
 		if _, err := f.client.Stat(current); os.IsNotExist(err) {
 			if err := f.client.Mkdir(current); err != nil {
+				if strings.Contains(err.Error(), "file exists") || strings.Contains(err.Error(), "Failure") {
+					continue
+				}
 				log.Printf("ensureDir: failed to create subfolder '%s': %v", current, err)
 				return err
 			}
