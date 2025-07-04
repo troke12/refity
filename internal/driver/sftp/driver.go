@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path"
+	pathpkg "path"
 	"strings"
 	"time"
 
@@ -99,7 +99,7 @@ func (d *Driver) GetContent(ctx context.Context, path string) ([]byte, error) {
 }
 
 func (d *Driver) PutContent(ctx context.Context, path string, content []byte) error {
-	dir := strings.TrimSuffix(path, "/"+filepathBase(path))
+	dir := pathpkg.Dir(path)
 	if err := d.ensureDir(dir); err != nil {
 		return err
 	}
@@ -214,7 +214,7 @@ func (d *Driver) ensureDir(dir string) error {
 		if p == "" {
 			continue
 		}
-		current = path.Join(current, p)
+		current = pathpkg.Join(current, p)
 		if _, err := d.client.Stat(current); err != nil {
 			if err := d.client.Mkdir(current); err != nil && !strings.Contains(err.Error(), "file exists") {
 				return err
