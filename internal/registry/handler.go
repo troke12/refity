@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 	"log"
+	"encoding/json"
 	godigest "github.com/opencontainers/go-digest"
 )
 
@@ -121,6 +122,35 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to read manifest"))
 			return
+		}
+		contentType := r.Header.Get("Content-Type")
+		if strings.Contains(contentType, "manifest.list.v2+json") || strings.Contains(contentType, "oci.image.index.v1+json") {
+			// Validasi semua referensi manifest ada di SFTP
+			type ManifestList struct {
+				Manifests []struct {
+					Digest string `json:"digest"`
+				} `json:"manifests"`
+			}
+			var ml ManifestList
+			if err := json.Unmarshal(manifest, &ml); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("Invalid manifest list JSON"))
+				return
+			}
+			missing := []string{}
+			for _, m := range ml.Manifests {
+				manifestPath := fmt.Sprintf("registry/%s/manifests/%s", name, m.Digest)
+				manifestPath = strings.TrimLeft(manifestPath, "/")
+				_, err := sftpDriver.GetContent(r.Context(), manifestPath)
+				if err != nil {
+					missing = append(missing, m.Digest)
+				}
+			}
+			if len(missing) > 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("Missing referenced manifests: " + strings.Join(missing, ", ")))
+				return
+			}
 		}
 		// Hitung digest manifest
 		manifestDigest := godigest.FromBytes(manifest)
