@@ -11,6 +11,7 @@ import (
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	"refity/internal/config"
 )
 
 // TODO: Ganti import berikut jika sudah tahu path module Go yang benar
@@ -53,12 +54,12 @@ type Driver struct {
 	client *sftp.Client
 }
 
-// NewDriver membuat koneksi SFTP baru (sementara hardcode, bisa diubah ke config/env)
-func NewDriver() (*Driver, error) {
-	addr := "localhost:22" // ganti sesuai kebutuhan
-	user := "user"
-	pass := "password"
-	config := &ssh.ClientConfig{
+// NewDriverWithConfig membuat koneksi SFTP baru dengan konfigurasi dari config.Config
+func NewDriverWithConfig(cfg *config.Config) (*Driver, error) {
+	addr := cfg.FTPHost + ":" + cfg.FTPPort
+	user := cfg.FTPUsername
+	pass := cfg.FTPPassword
+	sshConfig := &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
 			ssh.Password(pass),
@@ -66,7 +67,7 @@ func NewDriver() (*Driver, error) {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout: 10 * time.Second,
 	}
-	conn, err := ssh.Dial("tcp", addr, config)
+	conn, err := ssh.Dial("tcp", addr, sshConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +76,13 @@ func NewDriver() (*Driver, error) {
 		return nil, err
 	}
 	return &Driver{client: client}, nil
+}
+
+// Deprecated: gunakan NewDriverWithConfig
+func NewDriver() (*Driver, error) {
+	return NewDriverWithConfig(&config.Config{
+		FTPHost: "localhost", FTPPort: "22", FTPUsername: "user", FTPPassword: "password",
+	})
 }
 
 func (d *Driver) Name() string {

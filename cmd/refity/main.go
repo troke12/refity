@@ -28,7 +28,7 @@ func main() {
 		sftpPort = "23"
 	}
 	log.Printf("Connecting to SFTP: host=%s port=%s user=%s", cfg.FTPHost, sftpPort, cfg.FTPUsername)
-	driver, err := sftp.NewDriver()
+	driver, err := sftp.NewDriverWithConfig(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to SFTP: %v", err)
 	}
