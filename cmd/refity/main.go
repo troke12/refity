@@ -7,6 +7,7 @@ import (
 
 	"refity/internal/config"
 	"refity/internal/driver/sftp"
+	"refity/internal/driver/local"
 	"refity/internal/registry"
 	"refity/internal/auth"
 )
@@ -28,14 +29,16 @@ func main() {
 		sftpPort = "23"
 	}
 	log.Printf("Connecting to SFTP: host=%s port=%s user=%s", cfg.FTPHost, sftpPort, cfg.FTPUsername)
+
+	localRoot := "/tmp/refity"
+	localDriver := local.NewDriver(localRoot)
 	driver, err := sftp.NewDriverWithConfig(cfg)
 	if err != nil {
 		log.Fatalf("Failed to connect to SFTP: %v", err)
 	}
 	log.Println("SFTP connection established successfully")
 
-	// Inject driver ke registry
-	regRouter := registry.NewRouterWithDeps(driver, cfg)
+	regRouter := registry.NewRouterWithDeps(localDriver, driver, cfg)
 
 	authRouter := auth.BasicAuthMiddleware(cfg.RegistryUsername, cfg.RegistryPassword, regRouter)
 
