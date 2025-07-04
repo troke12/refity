@@ -82,11 +82,11 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
-	err = sftpClient.Upload(uploadPath, blob)
+	err = storageDriver.PutContent(r.Context(), uploadPath, blob)
 	if err != nil {
-		log.Printf("uploadBlobData: failed to upload blob to FTP: %v", err)
+		log.Printf("uploadBlobData: failed to upload blob to SFTP: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to upload blob to FTP: "+err.Error()))
+		w.Write([]byte("Failed to upload blob to SFTP: "+err.Error()))
 		return
 	}
 	w.Header().Set("Location", r.URL.Path)
@@ -98,10 +98,10 @@ func handleBlobDownload(w http.ResponseWriter, _ *http.Request, path string) {
 	name := strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/")
 	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, strings.Split(path, "/blobs/")[1])
 	blobPath = strings.TrimLeft(blobPath, "/")
-	blob, err := sftpClient.Download(blobPath)
+	blob, err := storageDriver.GetContent(nil, blobPath)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("Blob not found on FTP"))
+		w.Write([]byte("Blob not found on SFTP"))
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -121,19 +121,19 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			w.Write([]byte("Failed to read manifest"))
 			return
 		}
-		err = sftpClient.Upload(manifestPath, manifest)
+		err = storageDriver.PutContent(r.Context(), manifestPath, manifest)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to upload manifest to FTP"))
+			w.Write([]byte("Failed to upload manifest to SFTP"))
 			return
 		}
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("Manifest uploaded"))
 	case http.MethodGet:
-		manifest, err := sftpClient.Download(manifestPath)
+		manifest, err := storageDriver.GetContent(nil, manifestPath)
 		if err != nil {
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Manifest not found on FTP"))
+			w.Write([]byte("Manifest not found on SFTP"))
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -144,7 +144,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 }
 
 func handleCatalog(w http.ResponseWriter, _ *http.Request) {
-	entries, err := sftpClient.List("")
+	entries, err := storageDriver.List(nil, "registry")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to list repositories"))
@@ -152,9 +152,7 @@ func handleCatalog(w http.ResponseWriter, _ *http.Request) {
 	}
 	repos := []string{}
 	for _, entry := range entries {
-		if entry.IsDir() {
-			repos = append(repos, entry.Name())
-		}
+		repos = append(repos, entry)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -191,20 +189,20 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	if len(body) == 0 {
 		// Move/rename file dari uploads ke blobs
-		err = sftpClient.Rename(uploadPath, blobPath)
+		err = storageDriver.Move(r.Context(), uploadPath, blobPath)
 		if err != nil {
-			log.Printf("commitBlobUpload: failed to move blob on FTP: %v (from: %s, to: %s)", err, uploadPath, blobPath)
+			log.Printf("commitBlobUpload: failed to move blob on SFTP: %v (from: %s, to: %s)", err, uploadPath, blobPath)
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to move blob on FTP: "+err.Error()))
+			w.Write([]byte("Failed to move blob on SFTP: "+err.Error()))
 			return
 		}
 	} else {
 		// Jika body ada, upload ulang ke blobs
-		err = sftpClient.Upload(blobPath, body)
+		err = storageDriver.PutContent(r.Context(), blobPath, body)
 		if err != nil {
-			log.Printf("commitBlobUpload: failed to upload blob to FTP: %v", err)
+			log.Printf("commitBlobUpload: failed to upload blob to SFTP: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to upload blob to FTP: "+err.Error()))
+			w.Write([]byte("Failed to upload blob to SFTP: "+err.Error()))
 			return
 		}
 	}

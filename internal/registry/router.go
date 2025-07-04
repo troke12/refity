@@ -2,16 +2,16 @@ package registry
 
 import (
 	"net/http"
-	"refity/internal/ftp"
 	"refity/internal/config"
+	"refity/internal/driver/sftp"
 )
 
 var (
-	sftpClient *ftp.SFTPClient
+	storageDriver sftp.StorageDriver
 )
 
-func NewRouterWithDeps(f *ftp.SFTPClient, c *config.Config) http.Handler {
-	sftpClient = f
+func NewRouterWithDeps(driver sftp.StorageDriver, c *config.Config) http.Handler {
+	storageDriver = driver
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v2/", RegistryHandler)
 	return mux
