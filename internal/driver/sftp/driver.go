@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"refity/internal/config"
 	"errors"
+	"fmt"
 )
 
 // TODO: Ganti import berikut jika sudah tahu path module Go yang benar
@@ -116,9 +117,26 @@ func (d *Driver) PutContent(ctx context.Context, path string, content []byte) er
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.Write(content)
-	return err
+	var writeErr error
+	defer func() {
+		if writeErr != nil {
+			_ = d.client.Remove(path) // hapus file broken jika gagal
+		}
+	}()
+	_, writeErr = f.Write(content)
+	if writeErr != nil {
+		// Cek error SFTP Failure
+		if se, ok := writeErr.(*sftp.StatusError); ok && se.Code() == uint32(sftp.ErrSSHFxFailure) {
+			if _, hasExt := d.client.HasExtension("statvfs@openssh.com"); hasExt {
+				fsinfo, ferr := d.client.StatVFS(dir)
+				if ferr == nil && (fsinfo.Favail == 0 || fsinfo.FreeSpace() < uint64(len(content))) {
+					return fmt.Errorf("SFTP: no space left on device (ENOSPC)")
+				}
+			}
+		}
+		return writeErr
+	}
+	return nil
 }
 
 func (d *Driver) Reader(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
