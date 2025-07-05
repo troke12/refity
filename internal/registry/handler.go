@@ -186,6 +186,33 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			w.Write([]byte("Failed to write manifest to local"))
 			return
 		}
+		// Setelah ditulis ke local, upload ke SFTP secara async
+		ctx := r.Context()
+		go func(localPath, sftpPath string, data []byte) {
+			sftpSemaphore <- struct{}{}
+			defer func() { <-sftpSemaphore }()
+			lockIface, _ := sftpPathLocks.LoadOrStore(sftpPath, &sync.Mutex{})
+			pathLock := lockIface.(*sync.Mutex)
+			pathLock.Lock()
+			defer pathLock.Unlock()
+			log.Printf("[async SFTP] Start upload manifest: %s -> %s", localPath, sftpPath)
+			maxRetry := 5
+			var err error
+			for i := 0; i < maxRetry; i++ {
+				err = sftpDriver.PutContent(ctx, sftpPath, data, nil)
+				if err == nil {
+					log.Printf("[async SFTP] Success upload manifest: %s -> %s (try %d)", localPath, sftpPath, i+1)
+					break
+				}
+				log.Printf("[async SFTP] Retry %d: failed to upload manifest to SFTP: %v", i+1, err)
+				time.Sleep(2 * time.Second)
+			}
+			if err != nil {
+				log.Printf("[async SFTP] FINAL FAIL manifest: %v", err)
+				return
+			}
+			// Tidak perlu hapus local manifest
+		}(manifestPath, manifestPath, manifest)
 		w.Header().Set("Docker-Content-Digest", manifestDigest.String())
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("Manifest uploaded"))
