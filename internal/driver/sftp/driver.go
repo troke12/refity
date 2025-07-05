@@ -138,7 +138,7 @@ func (d *PoolStorageDriver) PutContent(ctx context.Context, path string, content
 	}()
 	total := int64(len(content))
 	written := int64(0)
-	chunk := int64(1024 * 1024)
+	chunk := int64(256 * 1024)
 	nextPercent := int64(10)
 	for written < total {
 		toWrite := chunk
@@ -280,7 +280,7 @@ func (d *Driver) PutContent(ctx context.Context, path string, content []byte, pr
 	}()
 	total := int64(len(content))
 	written := int64(0)
-	chunk := int64(1024 * 1024) // 1MB
+	chunk := int64(256 * 1024)
 	nextPercent := int64(10)
 	for written < total {
 		toWrite := chunk
