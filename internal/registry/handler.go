@@ -89,8 +89,7 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	group := groupFolder(uploadPath)
 	if group != "" {
 		if _, err := sftpDriver.Stat(r.Context(), group); err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("repository not found (create group folder first)"))
+			registryError(w, "INSUFFICIENT_SCOPE", "authorization failed", 403)
 			return
 		}
 	}
@@ -131,8 +130,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		group := groupFolder(manifestPath)
 		if group != "" {
 			if _, err := sftpDriver.Stat(r.Context(), group); err != nil {
-				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("repository not found (create group folder first)"))
+				registryError(w, "INSUFFICIENT_SCOPE", "authorization failed", 403)
 				return
 			}
 		}
@@ -237,8 +235,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	group := groupFolder(blobPath)
 	if group != "" {
 		if _, err := sftpDriver.Stat(r.Context(), group); err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("repository not found (create group folder first)"))
+			registryError(w, "INSUFFICIENT_SCOPE", "authorization failed", 403)
 			return
 		}
 	}
@@ -335,4 +332,10 @@ func groupFolder(path string) string {
 		return parts[0] + "/" + parts[1]
 	}
 	return ""
+}
+
+func registryError(w http.ResponseWriter, code, message string, status int) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write([]byte(fmt.Sprintf(`{"errors":[{"code":"%s","message":"%s","detail":null}]}`, code, message)))
 } 
