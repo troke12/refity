@@ -24,7 +24,7 @@ import (
 type StorageDriver interface {
 	Name() string
 	GetContent(ctx context.Context, path string) ([]byte, error)
-	PutContent(ctx context.Context, path string, content []byte) error
+	PutContent(ctx context.Context, path string, content []byte, progressCb ...func(written, total int64)) error
 	Reader(ctx context.Context, path string, offset int64) (io.ReadCloser, error)
 	Writer(ctx context.Context, path string, append bool) (FileWriter, error)
 	Stat(ctx context.Context, path string) (FileInfo, error)
@@ -102,7 +102,7 @@ func (d *Driver) GetContent(ctx context.Context, path string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
-func (d *Driver) PutContent(ctx context.Context, path string, content []byte) error {
+func (d *Driver) PutContent(ctx context.Context, path string, content []byte, progressCb ...func(written, total int64)) error {
 	dir := pathpkg.Dir(path)
 	group := groupFolder(dir)
 	if group != "" {
@@ -123,7 +123,29 @@ func (d *Driver) PutContent(ctx context.Context, path string, content []byte) er
 			_ = d.client.Remove(path) // hapus file broken jika gagal
 		}
 	}()
-	_, writeErr = f.Write(content)
+	total := int64(len(content))
+	written := int64(0)
+	chunk := int64(1024 * 1024) // 1MB
+	nextPercent := int64(10)
+	for written < total {
+		toWrite := chunk
+		if total-written < chunk {
+			toWrite = total - written
+		}
+		n, err := f.Write(content[written : written+toWrite])
+		if err != nil {
+			writeErr = err
+			break
+		}
+		written += int64(n)
+		if len(progressCb) > 0 && progressCb[0] != nil {
+			percent := written * 100 / total
+			if percent >= nextPercent || written == total {
+				progressCb[0](written, total)
+				nextPercent += 10
+			}
+		}
+	}
 	if writeErr != nil {
 		// Cek error SFTP Failure
 		if se, ok := writeErr.(*sftp.StatusError); ok && se.Code == uint32(sftp.ErrSSHFxFailure) {

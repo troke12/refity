@@ -95,7 +95,7 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 			return
 		}
 	}
-	err = localDriver.PutContent(r.Context(), uploadPath, blob)
+	err = localDriver.PutContent(r.Context(), uploadPath, blob, nil)
 	if err != nil {
 		log.Printf("uploadBlobData: failed to write blob to local: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -173,7 +173,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		}
 		// Hitung digest manifest
 		manifestDigest := godigest.FromBytes(manifest)
-		err = localDriver.PutContent(r.Context(), manifestPath, manifest)
+		err = localDriver.PutContent(r.Context(), manifestPath, manifest, nil)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to write manifest to local"))
@@ -262,7 +262,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 			return
 		}
 	} else {
-		err = localDriver.PutContent(r.Context(), blobPath, body)
+		err = localDriver.PutContent(r.Context(), blobPath, body, nil)
 		if err != nil {
 			if err == sftp.ErrRepoNotFound {
 				w.WriteHeader(http.StatusNotFound)
@@ -304,7 +304,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		maxRetry := 5
 		var err error
 		for i := 0; i < maxRetry; i++ {
-			err = sftpDriver.PutContent(ctx, sftpPath, data)
+			err = sftpDriver.PutContent(ctx, sftpPath, data, nil)
 			if err == nil {
 				log.Printf("[async SFTP] Success upload: %s -> %s (try %d)", localPath, sftpPath, i+1)
 				break
