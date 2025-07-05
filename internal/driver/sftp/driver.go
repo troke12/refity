@@ -224,6 +224,12 @@ func (d *Driver) ensureDir(dir string) error {
 		return nil
 	}
 	parts := strings.Split(dir, "/")
+	if len(parts) >= 2 && parts[0] == "registry" {
+		group := parts[0] + "/" + parts[1]
+		if _, err := d.client.Stat(group); err != nil {
+			return ErrRepoNotFound
+		}
+	}
 	current := ""
 	for _, p := range parts {
 		if p == "" {
