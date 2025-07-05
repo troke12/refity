@@ -12,6 +12,8 @@ import (
 	"refity/internal/driver/sftp"
 )
 
+var sftpSemaphore = make(chan struct{}, 2) // max 2 upload paralel
+
 // Handler untuk endpoint Docker Registry API v2
 func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v2/")
@@ -296,6 +298,8 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	// Setelah valid, upload ke SFTP secara async
 	ctx := r.Context()
 	go func(localPath, sftpPath string, data []byte) {
+		sftpSemaphore <- struct{}{} // ambil slot
+		defer func() { <-sftpSemaphore }() // lepas slot setelah selesai
 		log.Printf("[async SFTP] Start upload: %s -> %s", localPath, sftpPath)
 		maxRetry := 5
 		var err error
