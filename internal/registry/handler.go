@@ -59,7 +59,7 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// /<name>/tags/list
 	if strings.HasSuffix(path, "/tags/list") && r.Method == http.MethodGet {
-		handleTagsList(w, r, path)
+		handleTagsList(w, path)
 		return
 	}
 
@@ -402,7 +402,7 @@ func registryError(w http.ResponseWriter, code, message string, status int) {
 }
 
 // Tambahkan handler tags list
-func handleTagsList(w http.ResponseWriter, r *http.Request, path string) {
+func handleTagsList(w http.ResponseWriter, path string) {
 	parts := strings.SplitN(path, "/tags/list", 2)
 	repo := strings.TrimSuffix(parts[0], "/")
 	manifestDir := "registry/" + repo + "/manifests"
