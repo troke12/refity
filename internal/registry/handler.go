@@ -43,7 +43,7 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// /<name>/blobs/<digest>
 	if strings.Contains(path, "/blobs/") && r.Method == http.MethodGet {
-		handleBlobDownload(w, r, path)
+		handleBlobDownload(w, path)
 		return
 	}
 	// /<name>/manifests/<reference>
@@ -53,7 +53,7 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	// /_catalog
 	if path == "_catalog" && r.Method == http.MethodGet {
-		handleCatalog(w, r)
+		handleCatalog(w)
 		return
 	}
 	// /<name>/tags/list
@@ -115,11 +115,11 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	w.Write([]byte("Blob uploaded"))
 }
 
-func handleBlobDownload(w http.ResponseWriter, _ *http.Request, path string) {
+func handleBlobDownload(w http.ResponseWriter, path string) {
 	name := strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/")
 	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, strings.Split(path, "/blobs/")[1])
 	blobPath = strings.TrimLeft(blobPath, "/")
-	blob, err := sftpDriver.GetContent(nil, blobPath)
+	blob, err := sftpDriver.GetContent(context.TODO(), blobPath)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte("Blob not found on SFTP"))
@@ -168,7 +168,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			for _, m := range ml.Manifests {
 				manifestPath := fmt.Sprintf("registry/%s/manifests/%s", name, m.Digest)
 				manifestPath = strings.TrimLeft(manifestPath, "/")
-				_, err := sftpDriver.GetContent(nil, manifestPath)
+				_, err := sftpDriver.GetContent(context.TODO(), manifestPath)
 				if err != nil {
 					missing = append(missing, m.Digest)
 				}
@@ -218,7 +218,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("Manifest uploaded"))
 	case http.MethodGet:
-		manifest, err := sftpDriver.GetContent(nil, manifestPath)
+		manifest, err := sftpDriver.GetContent(context.TODO(), manifestPath)
 		if err != nil {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("Manifest not found on SFTP"))
@@ -231,20 +231,24 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 	}
 }
 
-func handleCatalog(w http.ResponseWriter, _ *http.Request) {
-	entries, err := sftpDriver.List(nil, "registry")
+func handleCatalog(w http.ResponseWriter) {
+	entries, err := sftpDriver.List(context.TODO(), "registry")
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to list repositories"))
 		return
 	}
 	repos := []string{}
-	for _, entry := range entries {
-		repos = append(repos, entry)
-	}
+	repos = append(repos, entries...)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf(`{"repositories":%q}`, repos)))
+	w.Write([]byte(`{"repositories":` + toJSONString(repos) + `}`))
+}
+
+// Helper untuk konversi slice ke JSON string
+func toJSONString(v interface{}) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
