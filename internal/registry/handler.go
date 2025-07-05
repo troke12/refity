@@ -8,6 +8,7 @@ import (
 	"time"
 	"log"
 	"encoding/json"
+	"context"
 	godigest "github.com/opencontainers/go-digest"
 	"refity/internal/driver/sftp"
 	"sync"
@@ -97,12 +98,12 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	// Cek folder group di SFTP
 	group := groupFolder(uploadPath)
 	if group != "" {
-		if _, err := sftpDriver.Stat(r.Context(), group); err != nil {
+		if _, err := sftpDriver.Stat(context.TODO(), group); err != nil {
 			registryError(w, "INSUFFICIENT_SCOPE", "authorization failed", 403)
 			return
 		}
 	}
-	err = localDriver.PutContent(r.Context(), uploadPath, blob, nil)
+	err = localDriver.PutContent(context.TODO(), uploadPath, blob, nil)
 	if err != nil {
 		log.Printf("uploadBlobData: failed to write blob to local: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -138,7 +139,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		// Cek folder group di SFTP
 		group := groupFolder(manifestPath)
 		if group != "" {
-			if _, err := sftpDriver.Stat(r.Context(), group); err != nil {
+			if _, err := sftpDriver.Stat(context.TODO(), group); err != nil {
 				registryError(w, "INSUFFICIENT_SCOPE", "authorization failed", 403)
 				return
 			}
@@ -167,7 +168,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			for _, m := range ml.Manifests {
 				manifestPath := fmt.Sprintf("registry/%s/manifests/%s", name, m.Digest)
 				manifestPath = strings.TrimLeft(manifestPath, "/")
-				_, err := sftpDriver.GetContent(r.Context(), manifestPath)
+				_, err := sftpDriver.GetContent(nil, manifestPath)
 				if err != nil {
 					missing = append(missing, m.Digest)
 				}
@@ -180,14 +181,14 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		}
 		// Hitung digest manifest
 		manifestDigest := godigest.FromBytes(manifest)
-		err = localDriver.PutContent(r.Context(), manifestPath, manifest, nil)
+		err = localDriver.PutContent(context.TODO(), manifestPath, manifest, nil)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to write manifest to local"))
 			return
 		}
 		// Setelah ditulis ke local, upload ke SFTP secara async
-		ctx := r.Context()
+		ctx := context.TODO()
 		go func(localPath, sftpPath string, data []byte) {
 			sftpSemaphore <- struct{}{}
 			defer func() { <-sftpSemaphore }()
@@ -270,7 +271,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	// Cek folder group di SFTP
 	group := groupFolder(blobPath)
 	if group != "" {
-		if _, err := sftpDriver.Stat(r.Context(), group); err != nil {
+		if _, err := sftpDriver.Stat(context.TODO(), group); err != nil {
 			registryError(w, "INSUFFICIENT_SCOPE", "authorization failed", 403)
 			return
 		}
@@ -283,7 +284,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	if len(body) == 0 {
-		err = localDriver.Move(r.Context(), uploadPath, blobPath)
+		err = localDriver.Move(context.TODO(), uploadPath, blobPath)
 		if err != nil {
 			if err == sftp.ErrRepoNotFound {
 				w.WriteHeader(http.StatusNotFound)
@@ -296,7 +297,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 			return
 		}
 	} else {
-		err = localDriver.PutContent(r.Context(), blobPath, body, nil)
+		err = localDriver.PutContent(context.TODO(), blobPath, body, nil)
 		if err != nil {
 			if err == sftp.ErrRepoNotFound {
 				w.WriteHeader(http.StatusNotFound)
@@ -310,7 +311,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		}
 	}
 	// Validasi digest: baca file, hitung digest, bandingkan
-	localData, err := localDriver.GetContent(r.Context(), blobPath)
+	localData, err := localDriver.GetContent(context.TODO(), blobPath)
 	if err != nil {
 		log.Printf("commitBlobUpload: failed to read blob from local: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -330,7 +331,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	// Setelah valid, upload ke SFTP secara async
-	ctx := r.Context()
+	ctx := context.TODO()
 	go func(localPath, sftpPath string, data []byte) {
 		sftpSemaphore <- struct{}{} // ambil slot
 		defer func() { <-sftpSemaphore }() // lepas slot setelah selesai
@@ -397,7 +398,7 @@ func handleTagsList(w http.ResponseWriter, r *http.Request, path string) {
 	repo := strings.TrimSuffix(parts[0], "/")
 	manifestDir := fmt.Sprintf("registry/%s/manifests", repo)
 	manifestDir = strings.TrimLeft(manifestDir, "/")
-	tags, err := sftpDriver.List(r.Context(), manifestDir)
+	tags, err := sftpDriver.List(context.TODO(), manifestDir)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(fmt.Sprintf("{\"errors\":[{\"code\":\"NOT_FOUND\",\"message\":\"repo or tags not found\"}]}")))
