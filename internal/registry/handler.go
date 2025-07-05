@@ -347,6 +347,13 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		pathLock.Lock()
 		defer pathLock.Unlock()
 
+		// Cek apakah file sudah ada di SFTP
+		if _, err := sftpDriver.Stat(ctx, sftpPath); err == nil {
+			log.Printf("[async SFTP] SKIP: blob already exists on SFTP: %s", sftpPath)
+			_ = localDriver.Delete(ctx, localPath) // tetap hapus local
+			return
+		}
+
 		log.Printf("[async SFTP] Start upload: %s -> %s", localPath, sftpPath)
 		maxRetry := 5
 		var err error
