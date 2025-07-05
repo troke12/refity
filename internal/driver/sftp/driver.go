@@ -129,10 +129,17 @@ func (d *Driver) PutContent(ctx context.Context, path string, content []byte) er
 		if se, ok := writeErr.(*sftp.StatusError); ok && se.Code == uint32(sftp.ErrSSHFxFailure) {
 			if _, hasExt := d.client.HasExtension("statvfs@openssh.com"); hasExt {
 				fsinfo, ferr := d.client.StatVFS(dir)
-				if ferr == nil && (fsinfo.Favail == 0 || fsinfo.FreeSpace() < uint64(len(content))) {
-					return fmt.Errorf("SFTP: no space left on device (ENOSPC)")
+				if ferr == nil {
+					fmt.Printf("[SFTP] StatVFS: Free=%d, Favail=%d, Files=%d\n", fsinfo.FreeSpace(), fsinfo.Favail, fsinfo.Files)
+					if fsinfo.Favail == 0 || fsinfo.FreeSpace() < uint64(len(content)) {
+						return fmt.Errorf("SFTP: no space left on device (ENOSPC)")
+					}
+				} else {
+					fmt.Printf("[SFTP] StatVFS error: %v\n", ferr)
 				}
 			}
+			fmt.Printf("[SFTP] SSH_FX_FAILURE: path=%s, size=%d, error=%v\n", path, len(content), writeErr)
+			time.Sleep(1 * time.Second) // delay sebelum retry
 		}
 		return writeErr
 	}
