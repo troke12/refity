@@ -21,7 +21,7 @@ func NewRouterWithDeps(localD local.StorageDriver, sftpD sftp.StorageDriver, c *
 		if err != nil {
 			panic("failed to init SFTP pool: " + err.Error())
 		}
-		sftpDriver = &sftp.PoolStorageDriver{pool: pool}
+		sftpDriver = &sftp.PoolStorageDriver{Pool: pool}
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v2/", RegistryHandler)

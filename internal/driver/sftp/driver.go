@@ -14,6 +14,7 @@ import (
 	"refity/internal/config"
 	"errors"
 	"fmt"
+	"log"
 )
 
 // TODO: Ganti import berikut jika sudah tahu path module Go yang benar
@@ -175,7 +176,7 @@ func (d *PoolStorageDriver) PutContent(ctx context.Context, path string, content
 			fmt.Printf("[SFTP] SSH_FX_FAILURE: path=%s, size=%d, error=%v\n", path, len(content), writeErr)
 			time.Sleep(1 * time.Second)
 		}
-		err = checkNoSpace(client, dir, int64(len(content)), writeErr)
+		checkNoSpace(client, dir, int64(len(content)), writeErr)
 		return writeErr
 	}
 	return nil
@@ -319,7 +320,7 @@ func (d *Driver) PutContent(ctx context.Context, path string, content []byte, pr
 			fmt.Printf("[SFTP] SSH_FX_FAILURE: path=%s, size=%d, error=%v\n", path, len(content), writeErr)
 			time.Sleep(1 * time.Second) // delay sebelum retry
 		}
-		err = checkNoSpace(d.client, dir, int64(len(content)), writeErr)
+		checkNoSpace(d.client, dir, int64(len(content)), writeErr)
 		return writeErr
 	}
 	return nil
@@ -612,21 +613,20 @@ func walkRecursiveWithClient(client *sftp.Client, path string, fn WalkFn) error 
 }
 
 // Tambahkan fungsi utilitas checkNoSpace
-func checkNoSpace(client *sftp.Client, dir string, size int64, origErr error) error {
+func checkNoSpace(client *sftp.Client, dir string, size int64, origErr error) {
 	e, ok := origErr.(*sftp.StatusError)
 	if !ok || e.Code != uint32(sftp.ErrSSHFxFailure) {
-		return origErr
+		return
 	}
 	if _, hasExt := client.HasExtension("statvfs@openssh.com"); !hasExt {
-		return origErr
+		return
 	}
 	fsinfo, err := client.StatVFS(dir)
 	if err != nil {
 		fmt.Printf("[SFTP] StatVFS returned %v\n", err)
-		return origErr
+		return
 	}
 	if fsinfo.Favail == 0 || fsinfo.Frsize*fsinfo.Bavail < uint64(size) {
-		return fmt.Errorf("sftp: no space left on device")
+		log.Printf("sftp: no space left on device")
 	}
-	return origErr
 } 
