@@ -126,7 +126,7 @@ func (d *Driver) PutContent(ctx context.Context, path string, content []byte) er
 	_, writeErr = f.Write(content)
 	if writeErr != nil {
 		// Cek error SFTP Failure
-		if se, ok := writeErr.(*sftp.StatusError); ok && se.Code() == uint32(sftp.ErrSSHFxFailure) {
+		if se, ok := writeErr.(*sftp.StatusError); ok && se.Code == uint32(sftp.ErrSSHFxFailure) {
 			if _, hasExt := d.client.HasExtension("statvfs@openssh.com"); hasExt {
 				fsinfo, ferr := d.client.StatVFS(dir)
 				if ferr == nil && (fsinfo.Favail == 0 || fsinfo.FreeSpace() < uint64(len(content))) {
