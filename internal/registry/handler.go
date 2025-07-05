@@ -321,8 +321,10 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 				log.Printf("[async SFTP] Success upload: %s -> %s (try %d)", localPath, sftpPath, i+1)
 				break
 			}
-			log.Printf("[async SFTP] Retry %d: failed to upload to SFTP: %v", i+1, err)
-			time.Sleep(2 * time.Second)
+			backoff := 1 << i // 2^i detik
+			if backoff > 16 { backoff = 16 }
+			log.Printf("[async SFTP] Retry %d: failed to upload to SFTP: %v, will retry in %ds", i+1, err, backoff)
+			time.Sleep(time.Duration(backoff) * time.Second)
 		}
 		if err != nil {
 			log.Printf("[async SFTP] FINAL FAIL: %v", err)
