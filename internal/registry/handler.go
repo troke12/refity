@@ -85,13 +85,17 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
-	err = localDriver.PutContent(r.Context(), uploadPath, blob)
-	if err != nil {
-		if err == sftp.ErrRepoNotFound {
+	// Cek folder group di SFTP
+	group := groupFolder(uploadPath)
+	if group != "" {
+		if _, err := sftpDriver.Stat(r.Context(), group); err != nil {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte("repository not found (create group folder first)"))
 			return
 		}
+	}
+	err = localDriver.PutContent(r.Context(), uploadPath, blob)
+	if err != nil {
 		log.Printf("uploadBlobData: failed to write blob to local: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to write blob to local: "+err.Error()))
@@ -123,6 +127,15 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 	manifestPath = strings.TrimLeft(manifestPath, "/")
 	switch r.Method {
 	case http.MethodPut:
+		// Cek folder group di SFTP
+		group := groupFolder(manifestPath)
+		if group != "" {
+			if _, err := sftpDriver.Stat(r.Context(), group); err != nil {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("repository not found (create group folder first)"))
+				return
+			}
+		}
 		manifest, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -220,6 +233,15 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	blobPath = strings.TrimLeft(blobPath, "/")
 	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
+	// Cek folder group di SFTP
+	group := groupFolder(blobPath)
+	if group != "" {
+		if _, err := sftpDriver.Stat(r.Context(), group); err != nil {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("repository not found (create group folder first)"))
+			return
+		}
+	}
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("commitBlobUpload: failed to read blob data: %v", err)
@@ -304,4 +326,13 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	w.Header().Set("Docker-Content-Digest", calculated.String())
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("Blob committed (async SFTP, digest validated)"))
+}
+
+// Helper groupFolder
+func groupFolder(path string) string {
+	parts := strings.Split(path, "/")
+	if len(parts) >= 3 && parts[0] == "registry" {
+		return parts[0] + "/" + parts[1]
+	}
+	return ""
 } 
