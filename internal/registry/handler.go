@@ -55,6 +55,11 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 		handleCatalog(w, r)
 		return
 	}
+	// /<name>/tags/list
+	if strings.HasSuffix(path, "/tags/list") && r.Method == http.MethodGet {
+		handleTagsList(w, r, path)
+		return
+	}
 
 	w.WriteHeader(http.StatusNotFound)
 	w.Write([]byte("Not found"))
@@ -356,4 +361,25 @@ func registryError(w http.ResponseWriter, code, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write([]byte(fmt.Sprintf(`{"errors":[{"code":"%s","message":"%s","detail":null}]}`, code, message)))
+}
+
+// Tambahkan handler tags list
+func handleTagsList(w http.ResponseWriter, r *http.Request, path string) {
+	// path: <repo>/tags/list
+	parts := strings.SplitN(path, "/tags/list", 2)
+	repo := strings.TrimSuffix(parts[0], "/")
+	manifestDir := fmt.Sprintf("registry/%s/manifests", repo)
+	manifestDir = strings.TrimLeft(manifestDir, "/")
+	tags, err := sftpDriver.List(r.Context(), manifestDir)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(fmt.Sprintf("{\"errors\":[{\"code\":\"NOT_FOUND\",\"message\":\"repo or tags not found\"}]}")))
+		return
+	}
+	resp := map[string]interface{}{
+		"name": repo,
+		"tags": tags,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
 } 
