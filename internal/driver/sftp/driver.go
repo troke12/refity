@@ -494,4 +494,117 @@ func (fw *sftpFileWriter) Cancel(ctx context.Context) error {
 
 func (fw *sftpFileWriter) Commit(ctx context.Context) error {
 	return nil // SFTP: file sudah tersimpan saat write/close
+}
+
+// Tambahkan implementasi method yang belum ada di PoolStorageDriver
+func (d *PoolStorageDriver) Stat(ctx context.Context, path string) (FileInfo, error) {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	fi, err := client.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	return fi, nil
+}
+
+func (d *PoolStorageDriver) List(ctx context.Context, path string) ([]string, error) {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	fis, err := client.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, fi := range fis {
+		out = append(out, fi.Name())
+	}
+	return out, nil
+}
+
+func (d *PoolStorageDriver) Move(ctx context.Context, sourcePath string, destPath string) error {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	dir := pathpkg.Dir(destPath)
+	group := groupFolder(dir)
+	if group != "" {
+		if _, err := client.Stat(group); err != nil {
+			return ErrRepoNotFound
+		}
+	}
+	if err := ensureDirWithClient(client, dir); err != nil {
+		return err
+	}
+	return client.Rename(sourcePath, destPath)
+}
+
+func (d *PoolStorageDriver) Delete(ctx context.Context, path string) error {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	return client.Remove(path)
+}
+
+func (d *PoolStorageDriver) RedirectURL(r *http.Request, path string) (string, error) {
+	return "", nil // SFTP tidak support direct URL
+}
+
+func (d *PoolStorageDriver) Walk(ctx context.Context, path string, f WalkFn, options ...func(*WalkOptions)) error {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	return walkRecursiveWithClient(client, path, f)
+}
+
+func (d *PoolStorageDriver) Reader(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	f, err := client.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	if offset > 0 {
+		_, err = f.Seek(offset, io.SeekStart)
+		if err != nil {
+			f.Close()
+			return nil, err
+		}
+	}
+	return f, nil
+}
+
+func (d *PoolStorageDriver) Writer(ctx context.Context, path string, append bool) (FileWriter, error) {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	dir := strings.TrimSuffix(path, "/"+filepathBase(path))
+	if err := ensureDirWithClient(client, dir); err != nil {
+		return nil, err
+	}
+	flag := os.O_WRONLY | os.O_CREATE
+	if append {
+		flag |= os.O_APPEND
+	} else {
+		flag |= os.O_TRUNC
+	}
+	f, err := client.OpenFile(path, flag)
+	if err != nil {
+		return nil, err
+	}
+	return &sftpFileWriter{file: f}, nil
+}
+
+func walkRecursiveWithClient(client *sftp.Client, path string, fn WalkFn) error {
+	fis, err := client.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	for _, fi := range fis {
+		full := path + "/" + fi.Name()
+		if err := fn(fi); err != nil {
+			return err
+		}
+		if fi.IsDir() {
+			if err := walkRecursiveWithClient(client, full, fn); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 } 
