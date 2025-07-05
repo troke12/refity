@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 	"refity/internal/config"
+	"errors"
 )
 
 // TODO: Ganti import berikut jika sudah tahu path module Go yang benar
@@ -47,6 +48,8 @@ type WalkOptions struct{}
 var ErrUnsupportedMethod = func(driverName string) error { return &unsupportedMethodError{DriverName: driverName} }
 type unsupportedMethodError struct{ DriverName string }
 func (e *unsupportedMethodError) Error() string { return e.DriverName + ": unsupported method" }
+
+var ErrRepoNotFound = errors.New("repository not found")
 
 // Implementasi driver SFTP
 
@@ -100,6 +103,12 @@ func (d *Driver) GetContent(ctx context.Context, path string) ([]byte, error) {
 
 func (d *Driver) PutContent(ctx context.Context, path string, content []byte) error {
 	dir := pathpkg.Dir(path)
+	group := groupFolder(dir)
+	if group != "" {
+		if _, err := d.client.Stat(group); err != nil {
+			return ErrRepoNotFound
+		}
+	}
 	if err := d.ensureDir(dir); err != nil {
 		return err
 	}
@@ -166,7 +175,13 @@ func (d *Driver) List(ctx context.Context, path string) ([]string, error) {
 }
 
 func (d *Driver) Move(ctx context.Context, sourcePath string, destPath string) error {
-	dir := strings.TrimSuffix(destPath, "/"+filepathBase(destPath))
+	dir := pathpkg.Dir(destPath)
+	group := groupFolder(dir)
+	if group != "" {
+		if _, err := d.client.Stat(group); err != nil {
+			return ErrRepoNotFound
+		}
+	}
 	if err := d.ensureDir(dir); err != nil {
 		return err
 	}
@@ -230,6 +245,14 @@ func filepathBase(p string) string {
 	}
 	parts := strings.Split(p, "/")
 	return parts[len(parts)-1]
+}
+
+func groupFolder(dir string) string {
+	parts := strings.Split(dir, "/")
+	if len(parts) >= 2 && parts[0] == "registry" {
+		return parts[0] + "/" + parts[1]
+	}
+	return ""
 }
 
 // FileWriter implementasi dasar untuk SFTP

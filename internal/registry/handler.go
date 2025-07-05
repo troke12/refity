@@ -9,6 +9,7 @@ import (
 	"log"
 	"encoding/json"
 	godigest "github.com/opencontainers/go-digest"
+	"refity/internal/driver/sftp"
 )
 
 // Handler untuk endpoint Docker Registry API v2
@@ -86,6 +87,11 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	uploadPath = strings.TrimLeft(uploadPath, "/")
 	err = localDriver.PutContent(r.Context(), uploadPath, blob)
 	if err != nil {
+		if err == sftp.ErrRepoNotFound {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("repository not found (create group folder first)"))
+			return
+		}
 		log.Printf("uploadBlobData: failed to write blob to local: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to write blob to local: "+err.Error()))
@@ -222,18 +228,26 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	if len(body) == 0 {
-		// Move/rename file dari uploads ke blobs di local
 		err = localDriver.Move(r.Context(), uploadPath, blobPath)
 		if err != nil {
+			if err == sftp.ErrRepoNotFound {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("repository not found (create group folder first)"))
+				return
+			}
 			log.Printf("commitBlobUpload: failed to move blob on local: %v (from: %s, to: %s)", err, uploadPath, blobPath)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to move blob on local: "+err.Error()))
 			return
 		}
 	} else {
-		// Jika body ada, upload ulang ke blobs di local
 		err = localDriver.PutContent(r.Context(), blobPath, body)
 		if err != nil {
+			if err == sftp.ErrRepoNotFound {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("repository not found (create group folder first)"))
+				return
+			}
 			log.Printf("commitBlobUpload: failed to write blob to local: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to write blob to local: "+err.Error()))
