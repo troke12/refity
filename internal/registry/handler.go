@@ -12,6 +12,7 @@ import (
 	godigest "github.com/opencontainers/go-digest"
 	"refity/internal/driver/sftp"
 	"sync"
+	"strconv"
 )
 
 var sftpSemaphore = make(chan struct{}, 2) // max 2 upload paralel
@@ -67,9 +68,9 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func initiateBlobUpload(w http.ResponseWriter, _ *http.Request, path string) {
-	uploadID := fmt.Sprintf("%d", time.Now().UnixNano())
+	uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
 	name := strings.TrimSuffix(strings.Split(path, "/blobs/")[0], "/")
-	location := fmt.Sprintf("/v2/%s/blobs/uploads/%s", name, uploadID)
+	location := "/v2/" + name + "/blobs/uploads/" + uploadID
 	w.Header().Set("Location", location)
 	w.Header().Set("Range", "0-0")
 	w.WriteHeader(http.StatusAccepted)
@@ -392,20 +393,29 @@ func groupFolder(path string) string {
 func registryError(w http.ResponseWriter, code, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	w.Write([]byte(fmt.Sprintf(`{"errors":[{"code":"%s","message":"%s","detail":null}]}`, code, message)))
+	resp := map[string]interface{}{
+		"errors": []map[string]interface{}{
+			{"code": code, "message": message, "detail": nil},
+		},
+	}
+	json.NewEncoder(w).Encode(resp)
 }
 
 // Tambahkan handler tags list
 func handleTagsList(w http.ResponseWriter, r *http.Request, path string) {
-	// path: <repo>/tags/list
 	parts := strings.SplitN(path, "/tags/list", 2)
 	repo := strings.TrimSuffix(parts[0], "/")
-	manifestDir := fmt.Sprintf("registry/%s/manifests", repo)
+	manifestDir := "registry/" + repo + "/manifests"
 	manifestDir = strings.TrimLeft(manifestDir, "/")
 	tags, err := sftpDriver.List(context.TODO(), manifestDir)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(fmt.Sprintf("{\"errors\":[{\"code\":\"NOT_FOUND\",\"message\":\"repo or tags not found\"}]}")))
+		resp := map[string]interface{}{
+			"errors": []map[string]interface{}{
+				{"code": "NOT_FOUND", "message": "repo or tags not found"},
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
 		return
 	}
 	resp := map[string]interface{}{
