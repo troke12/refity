@@ -10,9 +10,11 @@ import (
 	"encoding/json"
 	godigest "github.com/opencontainers/go-digest"
 	"refity/internal/driver/sftp"
+	"sync"
 )
 
 var sftpSemaphore = make(chan struct{}, 2) // max 2 upload paralel
+var sftpPathLocks sync.Map // map[string]*sync.Mutex
 
 // Handler untuk endpoint Docker Registry API v2
 func RegistryHandler(w http.ResponseWriter, r *http.Request) {
@@ -300,11 +302,21 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	go func(localPath, sftpPath string, data []byte) {
 		sftpSemaphore <- struct{}{} // ambil slot
 		defer func() { <-sftpSemaphore }() // lepas slot setelah selesai
+
+		// Lock per path
+		lockIface, _ := sftpPathLocks.LoadOrStore(sftpPath, &sync.Mutex{})
+		pathLock := lockIface.(*sync.Mutex)
+		pathLock.Lock()
+		defer pathLock.Unlock()
+
 		log.Printf("[async SFTP] Start upload: %s -> %s", localPath, sftpPath)
 		maxRetry := 5
 		var err error
 		for i := 0; i < maxRetry; i++ {
-			err = sftpDriver.PutContent(ctx, sftpPath, data, nil)
+			err = sftpDriver.PutContent(ctx, sftpPath, data, func(written, total int64) {
+				percent := written * 100 / total
+				log.Printf("[async SFTP] Progress: %s -> %s: %d%% (%d/%d bytes)", localPath, sftpPath, percent, written, total)
+			})
 			if err == nil {
 				log.Printf("[async SFTP] Success upload: %s -> %s (try %d)", localPath, sftpPath, i+1)
 				break

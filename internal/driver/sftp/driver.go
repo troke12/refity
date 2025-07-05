@@ -52,6 +52,161 @@ func (e *unsupportedMethodError) Error() string { return e.DriverName + ": unsup
 
 var ErrRepoNotFound = errors.New("repository not found")
 
+// Tambahkan pool SFTP client
+
+type DriverPool struct {
+	clients chan *sftp.Client
+	cfg     *config.Config
+}
+
+func NewDriverPool(cfg *config.Config, poolSize int) (*DriverPool, error) {
+	clients := make(chan *sftp.Client, poolSize)
+	for i := 0; i < poolSize; i++ {
+		addr := cfg.FTPHost + ":" + cfg.FTPPort
+		user := cfg.FTPUsername
+		pass := cfg.FTPPassword
+		sshConfig := &ssh.ClientConfig{
+			User: user,
+			Auth: []ssh.AuthMethod{
+				ssh.Password(pass),
+			},
+			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+			Timeout: 10 * time.Second,
+		}
+		conn, err := ssh.Dial("tcp", addr, sshConfig)
+		if err != nil {
+			return nil, err
+		}
+		client, err := sftp.NewClient(conn)
+		if err != nil {
+			return nil, err
+		}
+		clients <- client
+	}
+	return &DriverPool{clients: clients, cfg: cfg}, nil
+}
+
+func (p *DriverPool) getClient() *sftp.Client {
+	return <-p.clients
+}
+
+func (p *DriverPool) putClient(c *sftp.Client) {
+	p.clients <- c
+}
+
+// Implementasi StorageDriver
+
+type PoolStorageDriver struct {
+	Pool *DriverPool
+}
+
+func (d *PoolStorageDriver) Name() string { return "sftp-pool" }
+
+func (d *PoolStorageDriver) GetContent(ctx context.Context, path string) ([]byte, error) {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	f, err := client.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
+}
+
+func (d *PoolStorageDriver) PutContent(ctx context.Context, path string, content []byte, progressCb ...func(written, total int64)) error {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	dir := pathpkg.Dir(path)
+	group := groupFolder(dir)
+	if group != "" {
+		if _, err := client.Stat(group); err != nil {
+			return ErrRepoNotFound
+		}
+	}
+	if err := ensureDirWithClient(client, dir); err != nil {
+		return err
+	}
+	f, err := client.Create(path)
+	if err != nil {
+		return err
+	}
+	var writeErr error
+	defer func() {
+		if writeErr != nil {
+			_ = client.Remove(path)
+		}
+	}()
+	total := int64(len(content))
+	written := int64(0)
+	chunk := int64(1024 * 1024)
+	nextPercent := int64(10)
+	for written < total {
+		toWrite := chunk
+		if total-written < chunk {
+			toWrite = total - written
+		}
+		n, err := f.Write(content[written : written+toWrite])
+		if err != nil {
+			writeErr = err
+			break
+		}
+		written += int64(n)
+		if len(progressCb) > 0 && progressCb[0] != nil {
+			percent := written * 100 / total
+			if percent >= nextPercent || written == total {
+				progressCb[0](written, total)
+				nextPercent += 10
+			}
+		}
+	}
+	if writeErr != nil {
+		if se, ok := writeErr.(*sftp.StatusError); ok && se.Code == uint32(sftp.ErrSSHFxFailure) {
+			if _, hasExt := client.HasExtension("statvfs@openssh.com"); hasExt {
+				fsinfo, ferr := client.StatVFS(dir)
+				if ferr == nil {
+					fmt.Printf("[SFTP] StatVFS: Free=%d, Favail=%d, Files=%d\n", fsinfo.FreeSpace(), fsinfo.Favail, fsinfo.Files)
+					if fsinfo.Favail == 0 || fsinfo.FreeSpace() < uint64(len(content)) {
+						return fmt.Errorf("SFTP: no space left on device (ENOSPC)")
+					}
+				} else {
+					fmt.Printf("[SFTP] StatVFS error: %v\n", ferr)
+				}
+			}
+			fmt.Printf("[SFTP] SSH_FX_FAILURE: path=%s, size=%d, error=%v\n", path, len(content), writeErr)
+			time.Sleep(1 * time.Second)
+		}
+		return writeErr
+	}
+	return nil
+}
+
+// Tambahkan ensureDirWithClient untuk pool
+func ensureDirWithClient(client *sftp.Client, dir string) error {
+	if dir == "" || dir == "." || dir == "/" {
+		return nil
+	}
+	parts := strings.Split(dir, "/")
+	if len(parts) >= 2 && parts[0] == "registry" {
+		group := parts[0] + "/" + parts[1]
+		if _, err := client.Stat(group); err != nil {
+			return ErrRepoNotFound
+		}
+	}
+	current := ""
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		current = pathpkg.Join(current, p)
+		if _, err := client.Stat(current); err != nil {
+			if err := client.Mkdir(current); err != nil && !strings.Contains(err.Error(), "file exists") {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // Implementasi driver SFTP
 
 type Driver struct {
