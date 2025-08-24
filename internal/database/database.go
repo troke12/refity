@@ -35,6 +35,12 @@ type Manifest struct {
 	Content  string `json:"content"`
 }
 
+type Repository struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 func NewDatabase(dbPath string) (*Database, error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
@@ -64,6 +70,18 @@ func (d *Database) createTables() error {
 			size INTEGER NOT NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(name, tag)
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
+	// Create repositories table
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS repositories (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
 	`)
 	if err != nil {
@@ -171,7 +189,14 @@ func (d *Database) DeleteImage(name, tag string) error {
 }
 
 func (d *Database) DeleteRepository(name string) error {
-	_, err := d.db.Exec(`DELETE FROM images WHERE name = ?`, name)
+	// Delete from repositories table
+	_, err := d.db.Exec(`DELETE FROM repositories WHERE name = ?`, name)
+	if err != nil {
+		return err
+	}
+	
+	// Delete all images for this repository
+	_, err = d.db.Exec(`DELETE FROM images WHERE name = ?`, name)
 	return err
 }
 
@@ -241,6 +266,62 @@ func (d *Database) GetStatistics() (int, int64, error) {
 }
 
 // Repository operations
+func (d *Database) CreateRepository(name string) (*Repository, error) {
+	result, err := d.db.Exec(`
+		INSERT INTO repositories (name, created_at)
+		VALUES (?, CURRENT_TIMESTAMP)
+	`, name)
+	if err != nil {
+		return nil, err
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Repository{
+		ID:        id,
+		Name:      name,
+		CreatedAt: time.Now(),
+	}, nil
+}
+
+func (d *Database) GetRepository(name string) (*Repository, error) {
+	var repo Repository
+	err := d.db.QueryRow(`
+		SELECT id, name, created_at
+		FROM repositories WHERE name = ?
+	`, name).Scan(&repo.ID, &repo.Name, &repo.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &repo, nil
+}
+
+func (d *Database) GetAllRepositories() ([]*Repository, error) {
+	rows, err := d.db.Query(`
+		SELECT id, name, created_at
+		FROM repositories ORDER BY created_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var repositories []*Repository
+	for rows.Next() {
+		var repo Repository
+		err := rows.Scan(&repo.ID, &repo.Name, &repo.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		repositories = append(repositories, &repo)
+	}
+	return repositories, nil
+}
+
+
 func (d *Database) GetRepositories() ([]string, error) {
 	rows, err := d.db.Query(`SELECT DISTINCT name FROM images ORDER BY name`)
 	if err != nil {

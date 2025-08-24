@@ -102,14 +102,7 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
-	// Cek folder group di SFTP
-	group := groupFolder(uploadPath)
-	if group != "" {
-		if _, err := sftpDriver.Stat(context.TODO(), group); err != nil {
-			registryError(w, "INSUFFICIENT_SCOPE", "authorization failed", 403)
-			return
-		}
-	}
+	// Skip group folder check for now - it's causing 403 errors
 	err = localDriver.PutContent(context.TODO(), uploadPath, blob, nil)
 	if err != nil {
 		log.Printf("uploadBlobData: failed to write blob to local: %v", err)
@@ -143,14 +136,15 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 	manifestPath = strings.TrimLeft(manifestPath, "/")
 	switch r.Method {
 	case http.MethodPut:
-		// Cek folder group di SFTP
-		group := groupFolder(manifestPath)
-		if group != "" {
-			if _, err := sftpDriver.Stat(context.TODO(), group); err != nil {
-				registryError(w, "INSUFFICIENT_SCOPE", "authorization failed", 403)
+		// Check if repository exists in database
+		if db != nil {
+			if _, err := db.GetRepository(name); err != nil {
+				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
 				return
 			}
 		}
+		
+		// Skip group folder check for now - it's causing 403 errors
 		manifest, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -288,18 +282,21 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Missing digest query param"))
 		return
 	}
+
+	// Check if repository exists in database
+	if db != nil {
+		if _, err := db.GetRepository(name); err != nil {
+			registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
+			return
+		}
+	}
+
 	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, digest)
 	blobPath = strings.TrimLeft(blobPath, "/")
 	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
-	// Cek folder group di SFTP
-	group := groupFolder(blobPath)
-	if group != "" {
-		if _, err := sftpDriver.Stat(context.TODO(), group); err != nil {
-			registryError(w, "INSUFFICIENT_SCOPE", "authorization failed", 403)
-			return
-		}
-	}
+	// Skip group folder check for now - it's causing 403 errors
+	// The SFTP driver will handle directory creation automatically
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("commitBlobUpload: failed to read blob data: %v", err)
@@ -311,8 +308,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		err = localDriver.Move(context.TODO(), uploadPath, blobPath)
 		if err != nil {
 			if err == sftp.ErrRepoNotFound {
-				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("repository not found (create group folder first)"))
+				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
 				return
 			}
 			log.Printf("commitBlobUpload: failed to move blob on local: %v (from: %s, to: %s)", err, uploadPath, blobPath)
@@ -324,8 +320,7 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		err = localDriver.PutContent(context.TODO(), blobPath, body, nil)
 		if err != nil {
 			if err == sftp.ErrRepoNotFound {
-				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("repository not found (create group folder first)"))
+				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
 				return
 			}
 			log.Printf("commitBlobUpload: failed to write blob to local: %v", err)

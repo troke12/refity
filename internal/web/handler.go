@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -124,19 +125,40 @@ func (h *WebHandler) getDashboardData() DashboardData {
 		return DashboardData{}
 	}
 
-	// Get repositories from database
+	// Get all repositories (both from images and manually created)
 	repoNames, err := h.db.GetRepositories()
 	if err != nil {
 		log.Printf("Failed to get repositories: %v", err)
 		return DashboardData{}
 	}
 
-	repositories := []Repository{}
+	// Get manually created repositories
+	manualRepos, err := h.db.GetAllRepositories()
+	if err != nil {
+		log.Printf("Failed to get manual repositories: %v", err)
+		return DashboardData{}
+	}
+
+	// Create a map of all repository names
+	repoMap := make(map[string]bool)
 	for _, repoName := range repoNames {
+		repoMap[repoName] = true
+	}
+	for _, repo := range manualRepos {
+		repoMap[repo.Name] = true
+	}
+
+	repositories := []Repository{}
+	for repoName := range repoMap {
 		// Get images for this repository
 		images, err := h.db.GetImagesByRepository(repoName)
 		if err != nil {
 			log.Printf("Failed to get images for repository %s: %v", repoName, err)
+			// Even if no images, show the repository if it was manually created
+			repositories = append(repositories, Repository{
+				Name: repoName,
+				Tags: []Tag{},
+			})
 			continue
 		}
 
@@ -197,6 +219,85 @@ func (h *WebHandler) APIRepositoriesHandler(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"repositories": data.Repositories,
 		"total":        len(data.Repositories),
+	})
+}
+
+func (h *WebHandler) APICreateRepositoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse JSON body
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate repository name
+	if req.Name == "" {
+		http.Error(w, "Repository name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if repository already exists
+	if _, err := h.db.GetRepository(req.Name); err == nil {
+		http.Error(w, "Repository already exists", http.StatusConflict)
+		return
+	}
+
+	// Create repository in database
+	repo, err := h.db.CreateRepository(req.Name)
+	if err != nil {
+		log.Printf("Failed to create repository in database: %v", err)
+		http.Error(w, "Failed to create repository", http.StatusInternalServerError)
+		return
+	}
+
+	// Create repository folder in SFTP by creating a placeholder file
+	// The folder will be created automatically when needed during upload
+	repoPath := fmt.Sprintf("registry/%s/.placeholder", req.Name)
+	err = h.sftpDriver.PutContent(context.TODO(), repoPath, []byte(""), nil)
+	if err != nil {
+		log.Printf("Failed to create repository folder in SFTP: %v", err)
+		// Don't fail the request, just log the error
+		// The folder will be created automatically when needed
+	}
+
+	// Invalidate cache
+	h.cacheMutex.Lock()
+	delete(h.cache, "dashboard")
+	h.cacheMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"repository": repo,
+		"message": fmt.Sprintf("Repository %s created successfully", req.Name),
+	})
+}
+
+func (h *WebHandler) APIGetRepositoriesHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Get repositories from database
+	repos, err := h.db.GetAllRepositories()
+	if err != nil {
+		log.Printf("Failed to get repositories: %v", err)
+		http.Error(w, "Failed to get repositories", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"repositories": repos,
+		"total":        len(repos),
 	})
 }
 

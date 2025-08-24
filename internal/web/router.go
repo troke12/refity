@@ -38,7 +38,11 @@ func (r *WebRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			return
 		} else if req.Method == http.MethodGet {
 			// GET /api/repositories
-			r.handler.APIRepositoriesHandler(w, req)
+			r.handler.APIGetRepositoriesHandler(w, req)
+			return
+		} else if req.Method == http.MethodPost {
+			// POST /api/repositories (create new repository)
+			r.handler.APICreateRepositoryHandler(w, req)
 			return
 		}
 	}
