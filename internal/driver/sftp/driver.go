@@ -35,6 +35,7 @@ type StorageDriver interface {
 	RedirectURL(r *http.Request, path string) (string, error)
 	Walk(ctx context.Context, path string, f WalkFn, options ...func(*WalkOptions)) error
 	CreateRepositoryFolder(ctx context.Context, repoName string) error
+	DeleteRepositoryFolder(ctx context.Context, repoName string) error
 }
 
 type FileWriter interface {
@@ -205,6 +206,56 @@ func (d *PoolStorageDriver) CreateRepositoryFolder(ctx context.Context, repoName
 		if err := createDirRecursiveWithClient(client, subdir); err != nil {
 			return fmt.Errorf("failed to create subdirectory %s: %v", subdir, err)
 		}
+	}
+	
+	return nil
+}
+
+// DeleteRepositoryFolder removes the complete folder structure for a repository
+func (d *PoolStorageDriver) DeleteRepositoryFolder(ctx context.Context, repoName string) error {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	
+	// Delete the main repository folder
+	repoPath := "registry/" + repoName
+	if err := deleteDirRecursiveWithClient(client, repoPath); err != nil {
+		return fmt.Errorf("failed to delete repository folder: %v", err)
+	}
+	
+	return nil
+}
+
+// deleteDirRecursiveWithClient deletes directories recursively
+func deleteDirRecursiveWithClient(client *sftp.Client, dir string) error {
+	if dir == "" || dir == "." || dir == "/" {
+		return nil
+	}
+	
+	// First, delete all files and subdirectories
+	fis, err := client.ReadDir(dir)
+	if err != nil {
+		// If directory doesn't exist, consider it already deleted
+		return nil
+	}
+	
+	for _, fi := range fis {
+		fullPath := dir + "/" + fi.Name()
+		if fi.IsDir() {
+			// Recursively delete subdirectories
+			if err := deleteDirRecursiveWithClient(client, fullPath); err != nil {
+				return err
+			}
+		} else {
+			// Delete files
+			if err := client.Remove(fullPath); err != nil {
+				return fmt.Errorf("failed to delete file %s: %v", fullPath, err)
+			}
+		}
+	}
+	
+	// Finally, delete the directory itself
+	if err := client.Remove(dir); err != nil {
+		return fmt.Errorf("failed to delete directory %s: %v", dir, err)
 	}
 	
 	return nil
@@ -473,6 +524,53 @@ func (d *Driver) CreateRepositoryFolder(ctx context.Context, repoName string) er
 		if err := d.createDirRecursive(subdir); err != nil {
 			return fmt.Errorf("failed to create subdirectory %s: %v", subdir, err)
 		}
+	}
+	
+	return nil
+}
+
+// DeleteRepositoryFolder removes the complete folder structure for a repository
+func (d *Driver) DeleteRepositoryFolder(ctx context.Context, repoName string) error {
+	// Delete the main repository folder
+	repoPath := "registry/" + repoName
+	if err := d.deleteDirRecursive(repoPath); err != nil {
+		return fmt.Errorf("failed to delete repository folder: %v", err)
+	}
+	
+	return nil
+}
+
+// deleteDirRecursive deletes directories recursively
+func (d *Driver) deleteDirRecursive(dir string) error {
+	if dir == "" || dir == "." || dir == "/" {
+		return nil
+	}
+	
+	// First, delete all files and subdirectories
+	fis, err := d.client.ReadDir(dir)
+	if err != nil {
+		// If directory doesn't exist, consider it already deleted
+		return nil
+	}
+	
+	for _, fi := range fis {
+		fullPath := dir + "/" + fi.Name()
+		if fi.IsDir() {
+			// Recursively delete subdirectories
+			if err := d.deleteDirRecursive(fullPath); err != nil {
+				return err
+			}
+		} else {
+			// Delete files
+			if err := d.client.Remove(fullPath); err != nil {
+				return fmt.Errorf("failed to delete file %s: %v", fullPath, err)
+			}
+		}
+	}
+	
+	// Finally, delete the directory itself
+	if err := d.client.Remove(dir); err != nil {
+		return fmt.Errorf("failed to delete directory %s: %v", dir, err)
 	}
 	
 	return nil

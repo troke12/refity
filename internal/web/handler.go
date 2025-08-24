@@ -361,6 +361,16 @@ func (h *WebHandler) APIDeleteRepositoryHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Delete repository folder structure from SFTP
+	err = h.sftpDriver.DeleteRepositoryFolder(context.TODO(), repo)
+	if err != nil {
+		log.Printf("Failed to delete repository folder in SFTP: %v", err)
+		// Don't fail the request, just log the error
+		// The folder can be deleted manually if needed
+	} else {
+		log.Printf("Successfully deleted repository folder structure for: %s", repo)
+	}
+
 	// Invalidate cache
 	h.cacheMutex.Lock()
 	delete(h.cache, "dashboard")
