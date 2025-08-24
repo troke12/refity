@@ -9,15 +9,28 @@ import (
 	"refity/internal/driver/sftp"
 	"context"
 	"log"
+	"sync"
+	"time"
 )
 
 type WebHandler struct {
 	sftpDriver sftp.StorageDriver
+	cache      map[string]cachedData
+	cacheMutex sync.RWMutex
+	lastUpdate time.Time
 }
+
+type cachedData struct {
+	data      DashboardData
+	timestamp time.Time
+}
+
+const cacheDuration = 30 * time.Second // Cache for 30 seconds
 
 func NewWebHandler(sftpDriver sftp.StorageDriver) *WebHandler {
 	return &WebHandler{
 		sftpDriver: sftpDriver,
+		cache:      make(map[string]cachedData),
 	}
 }
 
@@ -120,12 +133,68 @@ func (h *WebHandler) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check cache first
+	h.cacheMutex.RLock()
+	if cached, exists := h.cache["dashboard"]; exists && time.Since(cached.timestamp) < cacheDuration {
+		h.cacheMutex.RUnlock()
+		h.renderDashboard(w, cached.data)
+		return
+	}
+	h.cacheMutex.RUnlock()
+
+	// Get fresh data from SFTP
+	data := h.getDashboardData()
+
+	// Cache the result
+	h.cacheMutex.Lock()
+	h.cache["dashboard"] = cachedData{
+		data:      data,
+		timestamp: time.Now(),
+	}
+	h.cacheMutex.Unlock()
+
+	h.renderDashboard(w, data)
+}
+
+func (h *WebHandler) renderDashboard(w http.ResponseWriter, data DashboardData) {
+	// Parse and execute template with custom functions
+	tmpl, err := template.New("dashboard").Funcs(template.FuncMap{
+		"formatBytes": func(bytes int64) string {
+			if bytes == 0 {
+				return "0 Bytes"
+			}
+			const unit = 1024
+			if bytes < unit {
+				return fmt.Sprintf("%d Bytes", bytes)
+			}
+			div, exp := int64(unit), 0
+			for n := bytes / unit; n >= unit; n /= unit {
+				div *= unit
+				exp++
+			}
+			return fmt.Sprintf("%.2f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+		},
+	}).Parse(dashboardTemplate)
+	if err != nil {
+		log.Printf("Failed to parse template: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Printf("Failed to execute template: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
+func (h *WebHandler) getDashboardData() DashboardData {
 	// Get repositories from SFTP - use same logic as registry handler
 	entries, err := h.sftpDriver.List(context.TODO(), "registry")
 	if err != nil {
 		log.Printf("Failed to list repositories: %v", err)
-		http.Error(w, "Failed to load repositories", http.StatusInternalServerError)
-		return
+		return DashboardData{}
 	}
 
 	repositories := []Repository{}
@@ -181,41 +250,10 @@ func (h *WebHandler) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data := DashboardData{
+	return DashboardData{
 		Repositories: repositories,
 		TotalImages:  totalImages,
 		TotalSize:    totalSize,
-	}
-
-	// Parse and execute template with custom functions
-	tmpl, err := template.New("dashboard").Funcs(template.FuncMap{
-		"formatBytes": func(bytes int64) string {
-			if bytes == 0 {
-				return "0 Bytes"
-			}
-			const unit = 1024
-			if bytes < unit {
-				return fmt.Sprintf("%d Bytes", bytes)
-			}
-			div, exp := int64(unit), 0
-			for n := bytes / unit; n >= unit; n /= unit {
-				div *= unit
-				exp++
-			}
-			return fmt.Sprintf("%.2f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-		},
-	}).Parse(dashboardTemplate)
-	if err != nil {
-		log.Printf("Failed to parse template: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	err = tmpl.Execute(w, data)
-	if err != nil {
-		log.Printf("Failed to execute template: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
 
@@ -225,59 +263,34 @@ func (h *WebHandler) APIRepositoriesHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Get repositories from SFTP - use same logic as registry handler
-	entries, err := h.sftpDriver.List(context.TODO(), "registry")
-	if err != nil {
-		log.Printf("Failed to list repositories: %v", err)
-		http.Error(w, "Failed to load repositories", http.StatusInternalServerError)
+	// Check cache first
+	h.cacheMutex.RLock()
+	if cached, exists := h.cache["dashboard"]; exists && time.Since(cached.timestamp) < cacheDuration {
+		h.cacheMutex.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"repositories": cached.data.Repositories,
+			"total":        len(cached.data.Repositories),
+		})
 		return
 	}
+	h.cacheMutex.RUnlock()
 
-	repositories := []Repository{}
-	for _, repo := range entries {
-		// Check if this is a group folder (like "ochi") or actual repository
-		// First try to get manifests directly
-		tags := h.getTagsWithSize(repo)
-		if len(tags) == 0 {
-			// If direct access fails, try to find subdirectories
-			log.Printf("Failed to list tags for %s directly, trying subdirectories", repo)
-			
-			// List subdirectories in the repo folder
-			subDirs, err := h.sftpDriver.List(context.TODO(), fmt.Sprintf("registry/%s", repo))
-			if err != nil {
-				log.Printf("Failed to list subdirectories for %s: %v", repo, err)
-				continue
-			}
-			
-			// For each subdirectory, check if it has manifests
-			for _, subDir := range subDirs {
-				fullRepoName := fmt.Sprintf("%s/%s", repo, subDir)
-				subTags := h.getTagsWithSize(fullRepoName)
-				if len(subTags) == 0 {
-					log.Printf("Failed to list tags for %s", fullRepoName)
-					continue
-				}
-				
-				repository := Repository{
-					Name: fullRepoName,
-					Tags: subTags,
-				}
-				repositories = append(repositories, repository)
-			}
-		} else {
-			// Direct repository access worked
-			repository := Repository{
-				Name: repo,
-				Tags: tags,
-			}
-			repositories = append(repositories, repository)
-		}
+	// Get fresh data
+	data := h.getDashboardData()
+
+	// Cache the result
+	h.cacheMutex.Lock()
+	h.cache["dashboard"] = cachedData{
+		data:      data,
+		timestamp: time.Now(),
 	}
+	h.cacheMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"repositories": repositories,
-		"total":        len(repositories),
+		"repositories": data.Repositories,
+		"total":        len(data.Repositories),
 	})
 }
 
@@ -307,6 +320,11 @@ func (h *WebHandler) APIDeleteTagHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Invalidate cache
+	h.cacheMutex.Lock()
+	delete(h.cache, "dashboard")
+	h.cacheMutex.Unlock()
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
@@ -335,6 +353,11 @@ func (h *WebHandler) APIDeleteRepositoryHandler(w http.ResponseWriter, r *http.R
 		http.Error(w, "Failed to delete repository", http.StatusInternalServerError)
 		return
 	}
+
+	// Invalidate cache
+	h.cacheMutex.Lock()
+	delete(h.cache, "dashboard")
+	h.cacheMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
