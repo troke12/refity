@@ -5,14 +5,16 @@ import (
 	"refity/internal/config"
 	"refity/internal/driver/sftp"
 	"refity/internal/driver/local"
+	"refity/internal/database"
 )
 
 var (
 	localDriver local.StorageDriver
 	sftpDriver sftp.StorageDriver
+	db         *database.Database
 )
 
-func NewRouterWithDeps(localD local.StorageDriver, sftpD sftp.StorageDriver, c *config.Config) http.Handler {
+func NewRouterWithDeps(localD local.StorageDriver, sftpD sftp.StorageDriver, c *config.Config, database *database.Database) http.Handler {
 	localDriver = localD
 	if sftpD != nil {
 		sftpDriver = sftpD
@@ -23,6 +25,7 @@ func NewRouterWithDeps(localD local.StorageDriver, sftpD sftp.StorageDriver, c *
 		}
 		sftpDriver = &sftp.PoolStorageDriver{Pool: pool}
 	}
+	db = database
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v2/", RegistryHandler)
 	return mux

@@ -4,15 +4,16 @@ import (
 	"net/http"
 	"strings"
 	"refity/internal/driver/sftp"
+	"refity/internal/database"
 )
 
 type WebRouter struct {
 	handler *WebHandler
 }
 
-func NewWebRouter(sftpDriver sftp.StorageDriver) *WebRouter {
+func NewWebRouter(sftpDriver sftp.StorageDriver, db *database.Database) *WebRouter {
 	return &WebRouter{
-		handler: NewWebHandler(sftpDriver),
+		handler: NewWebHandler(sftpDriver, db),
 	}
 }
 

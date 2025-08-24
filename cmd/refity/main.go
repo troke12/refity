@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"refity/internal/config"
+	"refity/internal/database"
 	"refity/internal/driver/sftp"
 	"refity/internal/driver/local"
 	"refity/internal/registry"
@@ -40,8 +41,16 @@ func main() {
 	}
 	log.Println("SFTP connection established successfully")
 
-	regRouter := registry.NewRouterWithDeps(localDriver, driver, cfg)
-	webRouter := web.NewWebRouter(driver)
+	// Initialize database
+	db, err := database.NewDatabase("refity.db")
+	if err != nil {
+		log.Fatalf("Failed to initialize database: %v", err)
+	}
+	defer db.Close()
+	log.Println("Database initialized successfully")
+
+	regRouter := registry.NewRouterWithDeps(localDriver, driver, cfg, db)
+	webRouter := web.NewWebRouter(driver, db)
 
 	// Create main router that handles both registry API and web UI
 	mainRouter := http.NewServeMux()

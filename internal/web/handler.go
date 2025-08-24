@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"refity/internal/driver/sftp"
-	"context"
+	"refity/internal/database"
 	"log"
 	"sync"
 	"time"
@@ -15,6 +15,7 @@ import (
 
 type WebHandler struct {
 	sftpDriver sftp.StorageDriver
+	db         *database.Database
 	cache      map[string]cachedData
 	cacheMutex sync.RWMutex
 	lastUpdate time.Time
@@ -27,89 +28,15 @@ type cachedData struct {
 
 const cacheDuration = 30 * time.Second // Cache for 30 seconds
 
-func NewWebHandler(sftpDriver sftp.StorageDriver) *WebHandler {
+func NewWebHandler(sftpDriver sftp.StorageDriver, db *database.Database) *WebHandler {
 	return &WebHandler{
 		sftpDriver: sftpDriver,
+		db:         db,
 		cache:      make(map[string]cachedData),
 	}
 }
 
-// calculateImageSize calculates the total size of an image by summing up all blob sizes
-func (h *WebHandler) calculateImageSize(repoName, tagName string) int64 {
-	var totalSize int64
-	
-	// Get manifest to find blob references
-	manifestPath := fmt.Sprintf("registry/%s/manifests/%s", repoName, tagName)
-	manifestData, err := h.sftpDriver.GetContent(context.TODO(), manifestPath)
-	if err != nil {
-		log.Printf("Failed to get manifest for %s:%s: %v", repoName, tagName, err)
-		return 0
-	}
-	
-	// Parse manifest to get blob references
-	var manifest map[string]interface{}
-	if err := json.Unmarshal(manifestData, &manifest); err != nil {
-		log.Printf("Failed to parse manifest for %s:%s: %v", repoName, tagName, err)
-		return 0
-	}
-	
-	// Get layers from manifest
-	layers, ok := manifest["layers"].([]interface{})
-	if !ok {
-		log.Printf("No layers found in manifest for %s:%s", repoName, tagName)
-		return 0
-	}
-	
-	// Calculate size from each layer
-	for _, layer := range layers {
-		if layerMap, ok := layer.(map[string]interface{}); ok {
-			if digest, ok := layerMap["digest"].(string); ok {
-				// Get blob size
-				blobPath := fmt.Sprintf("registry/%s/blobs/%s", repoName, digest)
-				if stat, err := h.sftpDriver.Stat(context.TODO(), blobPath); err == nil {
-					if sftpStat, ok := stat.(interface{ Size() int64 }); ok {
-						totalSize += sftpStat.Size()
-					}
-				}
-			}
-		}
-	}
-	
-	// Also include config blob size if present
-	if config, ok := manifest["config"].(map[string]interface{}); ok {
-		if digest, ok := config["digest"].(string); ok {
-			blobPath := fmt.Sprintf("registry/%s/blobs/%s", repoName, digest)
-			if stat, err := h.sftpDriver.Stat(context.TODO(), blobPath); err == nil {
-				if sftpStat, ok := stat.(interface{ Size() int64 }); ok {
-					totalSize += sftpStat.Size()
-				}
-			}
-		}
-	}
-	
-	return totalSize
-}
 
-// getTagsWithSize gets tags with their sizes for a repository
-func (h *WebHandler) getTagsWithSize(repoName string) []Tag {
-	manifestDir := fmt.Sprintf("registry/%s/manifests", repoName)
-	tagNames, err := h.sftpDriver.List(context.TODO(), manifestDir)
-	if err != nil {
-		log.Printf("Failed to list tags for %s: %v", repoName, err)
-		return []Tag{}
-	}
-	
-	var tags []Tag
-	for _, tagName := range tagNames {
-		size := h.calculateImageSize(repoName, tagName)
-		tags = append(tags, Tag{
-			Name: tagName,
-			Size: size,
-		})
-	}
-	
-	return tags
-}
 
 type Tag struct {
 	Name string `json:"name"`
@@ -190,64 +117,43 @@ func (h *WebHandler) renderDashboard(w http.ResponseWriter, data DashboardData) 
 }
 
 func (h *WebHandler) getDashboardData() DashboardData {
-	// Get repositories from SFTP - use same logic as registry handler
-	entries, err := h.sftpDriver.List(context.TODO(), "registry")
+	// Get statistics from database
+	totalImages, totalSize, err := h.db.GetStatistics()
 	if err != nil {
-		log.Printf("Failed to list repositories: %v", err)
+		log.Printf("Failed to get statistics: %v", err)
+		return DashboardData{}
+	}
+
+	// Get repositories from database
+	repoNames, err := h.db.GetRepositories()
+	if err != nil {
+		log.Printf("Failed to get repositories: %v", err)
 		return DashboardData{}
 	}
 
 	repositories := []Repository{}
-	totalImages := 0
-
-	for _, repo := range entries {
-		// Check if this is a group folder (like "ochi") or actual repository
-		// First try to get manifests directly
-		tags := h.getTagsWithSize(repo)
-		if len(tags) == 0 {
-			// If direct access fails, try to find subdirectories
-			log.Printf("Failed to list tags for %s directly, trying subdirectories", repo)
-			
-			// List subdirectories in the repo folder
-			subDirs, err := h.sftpDriver.List(context.TODO(), fmt.Sprintf("registry/%s", repo))
-			if err != nil {
-				log.Printf("Failed to list subdirectories for %s: %v", repo, err)
-				continue
-			}
-			
-			// For each subdirectory, check if it has manifests
-			for _, subDir := range subDirs {
-				fullRepoName := fmt.Sprintf("%s/%s", repo, subDir)
-				subTags := h.getTagsWithSize(fullRepoName)
-				if len(subTags) == 0 {
-					log.Printf("Failed to list tags for %s", fullRepoName)
-					continue
-				}
-				
-				repository := Repository{
-					Name: fullRepoName,
-					Tags: subTags,
-				}
-				repositories = append(repositories, repository)
-				totalImages += len(subTags)
-			}
-		} else {
-			// Direct repository access worked
-			repository := Repository{
-				Name: repo,
-				Tags: tags,
-			}
-			repositories = append(repositories, repository)
-			totalImages += len(tags)
+	for _, repoName := range repoNames {
+		// Get images for this repository
+		images, err := h.db.GetImagesByRepository(repoName)
+		if err != nil {
+			log.Printf("Failed to get images for repository %s: %v", repoName, err)
+			continue
 		}
-	}
 
-	// Calculate total size
-	var totalSize int64
-	for _, repo := range repositories {
-		for _, tag := range repo.Tags {
-			totalSize += tag.Size
+		// Convert images to tags
+		var tags []Tag
+		for _, img := range images {
+			tags = append(tags, Tag{
+				Name: img.Tag,
+				Size: img.Size,
+			})
 		}
+
+		repository := Repository{
+			Name: repoName,
+			Tags: tags,
+		}
+		repositories = append(repositories, repository)
 	}
 
 	return DashboardData{
@@ -311,9 +217,8 @@ func (h *WebHandler) APIDeleteTagHandler(w http.ResponseWriter, r *http.Request)
 	repo := parts[0]
 	tag := parts[1]
 
-	// Delete manifest file
-	manifestPath := fmt.Sprintf("registry/%s/manifests/%s", repo, tag)
-	err := h.sftpDriver.Delete(context.TODO(), manifestPath)
+	// Delete from database
+	err := h.db.DeleteImage(repo, tag)
 	if err != nil {
 		log.Printf("Failed to delete tag %s for repo %s: %v", tag, repo, err)
 		http.Error(w, "Failed to delete tag", http.StatusInternalServerError)
@@ -345,9 +250,8 @@ func (h *WebHandler) APIDeleteRepositoryHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Delete entire repository directory
-	repoPath := fmt.Sprintf("registry/%s", repo)
-	err := h.sftpDriver.Delete(context.TODO(), repoPath)
+	// Delete from database
+	err := h.db.DeleteRepository(repo)
 	if err != nil {
 		log.Printf("Failed to delete repository %s: %v", repo, err)
 		http.Error(w, "Failed to delete repository", http.StatusInternalServerError)

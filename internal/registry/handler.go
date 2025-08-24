@@ -221,6 +221,16 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			}
 			// Tidak perlu hapus local manifest
 		}(manifestPath, manifestPath, manifest)
+		
+		// Save image metadata to database
+		if db != nil {
+			go func() {
+				if err := saveImageToDatabase(name, ref, manifestDigest.String(), manifest); err != nil {
+					log.Printf("Failed to save image to database: %v", err)
+				}
+			}()
+		}
+		
 		w.Header().Set("Docker-Content-Digest", manifestDigest.String())
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("Manifest uploaded"))
@@ -470,4 +480,61 @@ func handleTagsList(w http.ResponseWriter, path string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// saveImageToDatabase saves image metadata to database
+func saveImageToDatabase(name, tag, digest string, manifestData []byte) error {
+	if db == nil {
+		return nil
+	}
+
+	// Parse manifest to get size information
+	var manifest map[string]interface{}
+	if err := json.Unmarshal(manifestData, &manifest); err != nil {
+		return err
+	}
+
+	// Calculate total size from layers
+	var totalSize int64
+	if layers, ok := manifest["layers"].([]interface{}); ok {
+		for _, layer := range layers {
+			if layerMap, ok := layer.(map[string]interface{}); ok {
+				if size, ok := layerMap["size"].(float64); ok {
+					totalSize += int64(size)
+				}
+			}
+		}
+	}
+
+	// Create image in database
+	image, err := db.CreateImage(name, tag, digest, totalSize)
+	if err != nil {
+		return err
+	}
+
+	// Save layers
+	if layers, ok := manifest["layers"].([]interface{}); ok {
+		for _, layer := range layers {
+			if layerMap, ok := layer.(map[string]interface{}); ok {
+				if digest, ok := layerMap["digest"].(string); ok {
+					if mediaType, ok := layerMap["mediaType"].(string); ok {
+						if size, ok := layerMap["size"].(float64); ok {
+							err := db.CreateLayer(image.ID, digest, mediaType, int64(size))
+							if err != nil {
+								log.Printf("Failed to save layer %s: %v", digest, err)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Save manifest
+	err = db.CreateManifest(image.ID, digest, string(manifestData))
+	if err != nil {
+		log.Printf("Failed to save manifest: %v", err)
+	}
+
+	return nil
 } 
