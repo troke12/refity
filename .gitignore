@@ -1,3 +1,5 @@
 .env
 data/*.db
 *.exe
+static/css/output.css
+node_modules/
