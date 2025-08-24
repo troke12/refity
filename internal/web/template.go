@@ -112,6 +112,7 @@ const dashboardTemplate = `
                 </div>
                 <ul class="divide-y divide-gray-200">
                     {{range .Repositories}}
+                    {{$repoName := .Name}}
                     <li class="px-4 py-4">
                         <div class="flex items-center justify-between">
                             <div class="flex-1">
@@ -121,7 +122,7 @@ const dashboardTemplate = `
                                         {{range .Tags}}
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                             {{.Name}} ({{formatBytes .Size}})
-                                            <button @click="deleteTag('{{$.Name}}', '{{.Name}}')" 
+                                            <button @click="deleteTag('{{$repoName}}', '{{.Name}}')" 
                                                     class="ml-1 text-blue-600 hover:text-blue-800">
                                                 ×
                                             </button>
