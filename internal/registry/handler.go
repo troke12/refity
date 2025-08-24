@@ -432,14 +432,7 @@ func handleSignatures(w http.ResponseWriter, r *http.Request, path string) {
 	}
 }
 
-// Helper groupFolder
-func groupFolder(path string) string {
-	parts := strings.Split(path, "/")
-	if len(parts) >= 3 && parts[0] == "registry" {
-		return parts[0] + "/" + parts[1]
-	}
-	return ""
-}
+
 
 func registryError(w http.ResponseWriter, code, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
