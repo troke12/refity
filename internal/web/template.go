@@ -219,6 +219,7 @@ const dashboardTemplate = `
                 newRepoName: '',
                 createMessage: '',
                 createSuccess: false,
+                credentials: null,
                 
                 async createRepository() {
                     if (!this.newRepoName.trim()) {
@@ -227,11 +228,24 @@ const dashboardTemplate = `
                         return;
                     }
 
+                    // Get credentials if not already set
+                    if (!this.credentials) {
+                        const username = prompt('Enter username:');
+                        const password = prompt('Enter password:');
+                        if (!username || !password) {
+                            this.createMessage = 'Authentication required';
+                            this.createSuccess = false;
+                            return;
+                        }
+                        this.credentials = btoa(username + ':' + password);
+                    }
+
                     try {
                         const response = await fetch('/api/repositories', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
+                                'Authorization': 'Basic ' + this.credentials
                             },
                             body: JSON.stringify({ name: this.newRepoName.trim() })
                         });
@@ -262,9 +276,23 @@ const dashboardTemplate = `
                         return;
                     }
 
+                    // Get credentials if not already set
+                    if (!this.credentials) {
+                        const username = prompt('Enter username:');
+                        const password = prompt('Enter password:');
+                        if (!username || !password) {
+                            alert('Authentication required');
+                            return;
+                        }
+                        this.credentials = btoa(username + ':' + password);
+                    }
+
                     try {
                         const response = await fetch('/api/repositories/' + encodeURIComponent(repoName), {
-                            method: 'DELETE'
+                            method: 'DELETE',
+                            headers: {
+                                'Authorization': 'Basic ' + this.credentials
+                            }
                         });
 
                         if (response.ok) {
@@ -283,9 +311,24 @@ const dashboardTemplate = `
                         return;
                     }
 
+                    // Get credentials if not already set
+                    if (!this.credentials) {
+                        const username = prompt('Enter username:');
+                        const password = prompt('Enter password:');
+                        if (!username || !password) {
+                            alert('Authentication required');
+                            return;
+                        }
+                        this.credentials = btoa(username + ':' + password);
+                        return;
+                    }
+
                     try {
                         const response = await fetch('/api/repositories/' + encodeURIComponent(repoName) + '/tags/' + encodeURIComponent(tagName), {
-                            method: 'DELETE'
+                            method: 'DELETE',
+                            headers: {
+                                'Authorization': 'Basic ' + this.credentials
+                            }
                         });
 
                         if (response.ok) {
