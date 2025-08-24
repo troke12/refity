@@ -42,7 +42,12 @@ func main() {
 	log.Println("SFTP connection established successfully")
 
 	// Initialize database
-	db, err := database.NewDatabase("refity.db")
+	dbPath := "data/refity.db"
+	// Ensure data directory exists
+	if err := os.MkdirAll("data", 0755); err != nil {
+		log.Printf("Warning: Failed to create data directory: %v", err)
+	}
+	db, err := database.NewDatabase(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
