@@ -70,12 +70,12 @@ const dashboardTemplate = `<!DOCTYPE html>
                     <div class="p-5">
                         <div class="flex items-center">
                             <div class="flex-shrink-0">
-                                <i class="fas fa-server text-purple-600 text-2xl"></i>
+                                <i class="fas fa-hdd text-purple-600 text-2xl"></i>
                             </div>
                             <div class="ml-5 w-0 flex-1">
                                 <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">Storage</dt>
-                                    <dd class="text-lg font-medium text-gray-900">SFTP</dd>
+                                    <dt class="text-sm font-medium text-gray-500 truncate">Total Size</dt>
+                                    <dd class="text-lg font-medium text-gray-900">{{formatBytes .TotalSize}}</dd>
                                 </dl>
                             </div>
                         </div>
@@ -101,8 +101,8 @@ const dashboardTemplate = `<!DOCTYPE html>
                                     <div class="mt-1 flex flex-wrap gap-2">
                                         {{range .Tags}}
                                         <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                            {{.}}
-                                            <button @click="deleteTag('{{$.Name}}', '{{.}}')" class="ml-1 text-blue-600 hover:text-blue-800">
+                                            {{.Name}} ({{formatBytes .Size}})
+                                            <button @click="deleteTag('{{$.Name}}', '{{.Name}}')" class="ml-1 text-blue-600 hover:text-blue-800">
                                                 <i class="fas fa-times"></i>
                                             </button>
                                         </span>
@@ -173,6 +173,15 @@ const dashboardTemplate = `<!DOCTYPE html>
     </div>
 
     <script>
+        // Format bytes to human readable format
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
         function dashboard() {
             return {
                 notification: {
