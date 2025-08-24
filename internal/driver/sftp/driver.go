@@ -34,6 +34,7 @@ type StorageDriver interface {
 	Delete(ctx context.Context, path string) error
 	RedirectURL(r *http.Request, path string) (string, error)
 	Walk(ctx context.Context, path string, f WalkFn, options ...func(*WalkOptions)) error
+	CreateRepositoryFolder(ctx context.Context, repoName string) error
 }
 
 type FileWriter interface {
@@ -178,6 +179,54 @@ func (d *PoolStorageDriver) PutContent(ctx context.Context, path string, content
 		}
 		checkNoSpace(client, dir, int64(len(content)), writeErr)
 		return writeErr
+	}
+	return nil
+}
+
+// CreateRepositoryFolder creates the complete folder structure for a repository
+func (d *PoolStorageDriver) CreateRepositoryFolder(ctx context.Context, repoName string) error {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	
+	// Create the main repository folder
+	repoPath := "registry/" + repoName
+	if err := createDirRecursiveWithClient(client, repoPath); err != nil {
+		return fmt.Errorf("failed to create repository folder: %v", err)
+	}
+	
+	// Create subdirectories for blobs, manifests, etc.
+	subdirs := []string{
+		repoPath + "/blobs",
+		repoPath + "/blobs/uploads",
+		repoPath + "/manifests",
+	}
+	
+	for _, subdir := range subdirs {
+		if err := createDirRecursiveWithClient(client, subdir); err != nil {
+			return fmt.Errorf("failed to create subdirectory %s: %v", subdir, err)
+		}
+	}
+	
+	return nil
+}
+
+// createDirRecursiveWithClient creates directories recursively without group folder checks
+func createDirRecursiveWithClient(client *sftp.Client, dir string) error {
+	if dir == "" || dir == "." || dir == "/" {
+		return nil
+	}
+	parts := strings.Split(dir, "/")
+	current := ""
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		current = pathpkg.Join(current, p)
+		if _, err := client.Stat(current); err != nil {
+			if err := client.Mkdir(current); err != nil && !strings.Contains(err.Error(), "file exists") {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -403,6 +452,51 @@ func (d *Driver) RedirectURL(r *http.Request, path string) (string, error) {
 
 func (d *Driver) Walk(ctx context.Context, path string, f WalkFn, options ...func(*WalkOptions)) error {
 	return d.walkRecursive(path, f)
+}
+
+// CreateRepositoryFolder creates the complete folder structure for a repository
+func (d *Driver) CreateRepositoryFolder(ctx context.Context, repoName string) error {
+	// Create the main repository folder
+	repoPath := "registry/" + repoName
+	if err := d.createDirRecursive(repoPath); err != nil {
+		return fmt.Errorf("failed to create repository folder: %v", err)
+	}
+	
+	// Create subdirectories for blobs, manifests, etc.
+	subdirs := []string{
+		repoPath + "/blobs",
+		repoPath + "/blobs/uploads",
+		repoPath + "/manifests",
+	}
+	
+	for _, subdir := range subdirs {
+		if err := d.createDirRecursive(subdir); err != nil {
+			return fmt.Errorf("failed to create subdirectory %s: %v", subdir, err)
+		}
+	}
+	
+	return nil
+}
+
+// createDirRecursive creates directories recursively without group folder checks
+func (d *Driver) createDirRecursive(dir string) error {
+	if dir == "" || dir == "." || dir == "/" {
+		return nil
+	}
+	parts := strings.Split(dir, "/")
+	current := ""
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		current = pathpkg.Join(current, p)
+		if _, err := d.client.Stat(current); err != nil {
+			if err := d.client.Mkdir(current); err != nil && !strings.Contains(err.Error(), "file exists") {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (d *Driver) walkRecursive(path string, fn WalkFn) error {

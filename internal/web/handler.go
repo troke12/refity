@@ -34,6 +34,7 @@ func NewWebHandler(sftpDriver sftp.StorageDriver, db *database.Database) *WebHan
 		sftpDriver: sftpDriver,
 		db:         db,
 		cache:      make(map[string]cachedData),
+		lastUpdate: time.Now(),
 	}
 }
 
@@ -79,6 +80,7 @@ func (h *WebHandler) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 		data:      data,
 		timestamp: time.Now(),
 	}
+	h.lastUpdate = time.Now()
 	h.cacheMutex.Unlock()
 
 	h.renderDashboard(w, data)
@@ -257,14 +259,14 @@ func (h *WebHandler) APICreateRepositoryHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Create repository folder in SFTP by creating a placeholder file
-	// The folder will be created automatically when needed during upload
-	repoPath := fmt.Sprintf("registry/%s/.placeholder", req.Name)
-	err = h.sftpDriver.PutContent(context.TODO(), repoPath, []byte(""), nil)
+	// Create repository folder structure in SFTP
+	err = h.sftpDriver.CreateRepositoryFolder(context.TODO(), req.Name)
 	if err != nil {
 		log.Printf("Failed to create repository folder in SFTP: %v", err)
 		// Don't fail the request, just log the error
-		// The folder will be created automatically when needed
+		// The folder will be created automatically when needed during upload
+	} else {
+		log.Printf("Successfully created repository folder structure for: %s", req.Name)
 	}
 
 	// Invalidate cache
