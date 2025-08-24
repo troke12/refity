@@ -52,6 +52,12 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 		handleManifest(w, r, path)
 		return
 	}
+	// /<name>/signatures/<digest>
+	if strings.Contains(path, "/signatures/") {
+		log.Printf("Handling signatures request: %s", path)
+		handleSignatures(w, r, path)
+		return
+	}
 	// /_catalog
 	if path == "_catalog" && r.Method == http.MethodGet {
 		handleCatalog(w)
@@ -386,6 +392,36 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	w.Header().Set("Docker-Content-Digest", calculated.String())
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte("Blob committed (async SFTP, digest validated)"))
+}
+
+// Handler untuk endpoint signatures
+func handleSignatures(w http.ResponseWriter, r *http.Request, path string) {
+	// Parse path but don't use variables for now since we're just returning empty responses
+	_ = strings.TrimPrefix(strings.Split(path, "/signatures/")[0], "/")
+	_ = strings.Split(path, "/signatures/")[1]
+	
+	switch r.Method {
+	case http.MethodGet:
+		// Return empty signatures list - Docker expects this endpoint to exist
+		// even if no signatures are available
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"signatures":[]}`))
+	case http.MethodPost:
+		// Accept signature uploads but don't store them for now
+		// This prevents Docker from failing when trying to push signatures
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte("Signature uploaded"))
+	case http.MethodDelete:
+		// Accept signature deletions
+		w.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
 }
 
 // Helper groupFolder
