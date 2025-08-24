@@ -68,7 +68,7 @@ func main() {
 	// Web UI routes (root and dashboard)
 	mainRouter.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Check if it's a web UI route
-		if r.URL.Path == "/" || r.URL.Path == "/dashboard" || strings.HasPrefix(r.URL.Path, "/api/") || strings.HasPrefix(r.URL.Path, "/static/") {
+		if r.URL.Path == "/" || r.URL.Path == "/dashboard" || strings.HasPrefix(r.URL.Path, "/api/") {
 			webRouter.ServeHTTP(w, r)
 		} else {
 			// Fallback to registry API

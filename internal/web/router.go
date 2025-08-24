@@ -1,9 +1,7 @@
 package web
 
 import (
-	"log"
 	"net/http"
-	"os"
 	"strings"
 	"refity/internal/driver/sftp"
 	"refity/internal/database"
@@ -21,43 +19,6 @@ func NewWebRouter(sftpDriver sftp.StorageDriver, db *database.Database) *WebRout
 
 func (r *WebRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
-
-	// Static files
-	if strings.HasPrefix(path, "/static/") {
-		// Debug: log the request
-		log.Printf("Static file request: %s", path)
-		
-		// Check if file exists
-		filePath := strings.TrimPrefix(path, "/static/")
-		fullPath := "static/" + filePath
-		
-		// Try to open the file to check if it exists
-		if _, err := os.Stat(fullPath); os.IsNotExist(err) {
-			log.Printf("File not found: %s", fullPath)
-			http.NotFound(w, req)
-			return
-		}
-		
-		// Create a custom file server with proper MIME types
-		fs := http.FileServer(http.Dir("static"))
-		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Set proper MIME types for static files
-			if strings.HasSuffix(r.URL.Path, ".css") {
-				w.Header().Set("Content-Type", "text/css")
-			} else if strings.HasSuffix(r.URL.Path, ".js") {
-				w.Header().Set("Content-Type", "application/javascript")
-			} else if strings.HasSuffix(r.URL.Path, ".png") {
-				w.Header().Set("Content-Type", "image/png")
-			} else if strings.HasSuffix(r.URL.Path, ".jpg") || strings.HasSuffix(r.URL.Path, ".jpeg") {
-				w.Header().Set("Content-Type", "image/jpeg")
-			} else if strings.HasSuffix(r.URL.Path, ".svg") {
-				w.Header().Set("Content-Type", "image/svg+xml")
-			}
-			fs.ServeHTTP(w, r)
-		})
-		http.StripPrefix("/static/", handler).ServeHTTP(w, req)
-		return
-	}
 
 	// Dashboard routes
 	if path == "/" || path == "/dashboard" {

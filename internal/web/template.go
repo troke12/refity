@@ -7,79 +7,68 @@ const dashboardTemplate = `
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Refity Docker Registry Dashboard</title>
-    <link href="/static/css/output.css" rel="stylesheet">
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body class="bg-gray-50">
-    <div class="min-h-screen" x-data="dashboard()">
+<body class="bg-light">
+    <div class="container-fluid" x-data="dashboard()" x-init="init()">
         <!-- Header -->
-        <header class="bg-white shadow">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16">
-                    <div class="flex items-center">
-                        <h1 class="text-xl font-semibold text-gray-900">Refity Docker Registry</h1>
-                    </div>
-                    <div class="flex items-center space-x-4">
-                        <button @click="refreshData()" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-                            Refresh
-                        </button>
-                    </div>
+        <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+            <div class="container-fluid">
+                <span class="navbar-brand">Refity Docker Registry</span>
+                <div class="navbar-nav ms-auto">
+                    <button @click="refreshData()" class="btn btn-outline-light">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                    </button>
                 </div>
             </div>
-        </header>
+        </nav>
 
-        <div class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        <div class="container-fluid">
             <!-- Statistics Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <div class="bg-white overflow-hidden shadow rounded-lg">
-                    <div class="p-5">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                                </svg>
-                            </div>
-                            <div class="ml-5 w-0 flex-1">
-                                <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">Total Images</dt>
-                                    <dd class="text-lg font-medium text-gray-900">{{.TotalImages}}</dd>
-                                </dl>
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="bi bi-images fs-1 text-primary"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="card-subtitle mb-1 text-muted">Total Images</h6>
+                                    <h4 class="card-title mb-0">{{.TotalImages}}</h4>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-white overflow-hidden shadow rounded-lg">
-                    <div class="p-5">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                                </svg>
-                            </div>
-                            <div class="ml-5 w-0 flex-1">
-                                <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">Total Repositories</dt>
-                                    <dd class="text-lg font-medium text-gray-900">{{len .Repositories}}</dd>
-                                </dl>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="bi bi-folder fs-1 text-success"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="card-subtitle mb-1 text-muted">Total Repositories</h6>
+                                    <h4 class="card-title mb-0">{{len .Repositories}}</h4>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-white overflow-hidden shadow rounded-lg">
-                    <div class="p-5">
-                        <div class="flex items-center">
-                            <div class="flex-shrink-0">
-                                <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                                </svg>
-                            </div>
-                            <div class="ml-5 w-0 flex-1">
-                                <dl>
-                                    <dt class="text-sm font-medium text-gray-500 truncate">Total Size</dt>
-                                    <dd class="text-lg font-medium text-gray-900">{{formatBytes .TotalSize}}</dd>
-                                </dl>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex align-items-center">
+                                <div class="flex-shrink-0">
+                                    <i class="bi bi-hdd fs-1 text-warning"></i>
+                                </div>
+                                <div class="flex-grow-1 ms-3">
+                                    <h6 class="card-subtitle mb-1 text-muted">Total Size</h6>
+                                    <h4 class="card-title mb-0">{{formatBytes .TotalSize}}</h4>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -87,131 +76,127 @@ const dashboardTemplate = `
             </div>
 
             <!-- Create Repository Button -->
-            <div class="mb-8">
-                <button @click="showCreateModal = true; console.log('Button clicked, showCreateModal:', showCreateModal)" 
-                        class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                    </svg>
-                    Create New Repository
+            <div class="mb-4">
+                <button @click="showCreateModal()" 
+                        class="btn btn-primary">
+                    <i class="bi bi-plus-circle"></i> Create New Repository
                 </button>
             </div>
 
             <!-- Repositories List -->
-            <div class="bg-white shadow overflow-hidden sm:rounded-md">
-                <div class="px-4 py-5 sm:px-6">
-                    <h3 class="text-lg leading-6 font-medium text-gray-900">Repositories</h3>
-                    <p class="mt-1 max-w-2xl text-sm text-gray-500">List of all repositories and their tags</p>
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Repositories</h5>
+                    <small class="text-muted">List of all repositories and their tags</small>
                 </div>
-                <ul class="divide-y divide-gray-200">
-                    {{range .Repositories}}
-                    {{$repoName := .Name}}
-                    <li class="px-4 py-4">
-                        <div class="flex items-center justify-between">
-                            <div class="flex-1">
-                                <h4 class="text-lg font-medium text-gray-900">{{.Name}}</h4>
-                                <div class="mt-2 flex flex-wrap gap-2">
-                                    {{if .Tags}}
-                                        {{range .Tags}}
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                            {{.Name}} ({{formatBytes .Size}})
-                                            <button @click="deleteTag('{{$repoName}}', '{{.Name}}')" 
-                                                    class="ml-1 text-blue-600 hover:text-blue-800">
-                                                ×
-                                            </button>
-                                        </span>
-                                        {{end}}
-                                    {{else}}
-                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                                            No images yet
-                                        </span>
-                                    {{end}}
+                <div class="card-body p-0">
+                    {{if .Repositories}}
+                        <div class="list-group list-group-flush">
+                            {{range .Repositories}}
+                            {{$repoName := .Name}}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <h6 class="mb-2">{{.Name}}</h6>
+                                        <div class="d-flex flex-wrap gap-1">
+                                            {{if .Tags}}
+                                                {{range .Tags}}
+                                                <span class="badge bg-primary d-inline-flex align-items-center">
+                                                    {{.Name}} ({{formatBytes .Size}})
+                                                    <button @click="deleteTag('{{$repoName}}', '{{.Name}}')" 
+                                                            class="btn-close btn-close-white ms-2" 
+                                                            style="font-size: 0.5rem;"></button>
+                                                </span>
+                                                {{end}}
+                                            {{else}}
+                                                <span class="badge bg-secondary">No images yet</span>
+                                            {{end}}
+                                        </div>
+                                    </div>
+                                    <div class="ms-3">
+                                        <button @click="deleteRepository('{{.Name}}')" 
+                                                class="btn btn-outline-danger btn-sm">
+                                            <i class="bi bi-trash"></i> Delete
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="flex space-x-2">
-                                <button @click="deleteRepository('{{.Name}}')" 
-                                        class="inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500">
-                                    Delete Repository
-                                </button>
-                            </div>
+                            {{end}}
                         </div>
-                    </li>
+                    {{else}}
+                        <div class="text-center py-5">
+                            <i class="bi bi-folder-x display-1 text-muted"></i>
+                            <h5 class="mt-3">No repositories</h5>
+                            <p class="text-muted">Create a repository to get started.</p>
+                        </div>
                     {{end}}
-                </ul>
-                {{if not .Repositories}}
-                <div class="px-4 py-8 text-center text-gray-500">
-                    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                    </svg>
-                    <h3 class="mt-2 text-sm font-medium text-gray-900">No repositories</h3>
-                    <p class="mt-1 text-sm text-gray-500">Create a repository to get started.</p>
                 </div>
-                {{end}}
             </div>
         </div>
     </div>
 
     <!-- Create Repository Modal -->
-    <div x-show="showCreateModal" 
-         class="fixed inset-0 z-50 flex items-center justify-center"
-         style="display: none;">
-        <!-- Background overlay -->
-        <div class="fixed inset-0 bg-black bg-opacity-50" 
-             @click="showCreateModal = false"></div>
-
-        <!-- Modal panel -->
-        <div class="relative bg-white rounded-lg p-6 w-full max-w-md mx-4"
-             @click.stop>
-            <div class="flex items-center mb-4">
-                <div class="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-full bg-blue-100">
-                    <svg class="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
-                    </svg>
+    <div class="modal fade" id="createModal" tabindex="-1" aria-labelledby="createModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createModalLabel">
+                        <i class="bi bi-plus-circle text-primary"></i> Create New Repository
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="ml-3">
-                    <h3 class="text-lg font-medium text-gray-900">
-                        Create New Repository
-                    </h3>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="repo-name" class="form-label">Repository Name</label>
+                        <input type="text" 
+                               id="repo-name"
+                               x-model="newRepoName" 
+                               placeholder="Enter repository name (e.g., myapp)" 
+                               class="form-control"
+                               @keyup.enter="createRepository()">
+                        <div x-show="createMessage" 
+                             x-text="createMessage" 
+                             :class="createSuccess ? 'text-success' : 'text-danger'" 
+                             class="form-text mt-2"></div>
+                    </div>
                 </div>
-            </div>
-            
-            <div class="mb-4">
-                <label for="repo-name" class="block text-sm font-medium text-gray-700 mb-2">
-                    Repository Name
-                </label>
-                <input type="text" 
-                       id="repo-name"
-                       x-model="newRepoName" 
-                       placeholder="Enter repository name (e.g., myapp)" 
-                       class="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                       @keyup.enter="createRepository()">
-                <div x-show="createMessage" 
-                     x-text="createMessage" 
-                     :class="createSuccess ? 'text-green-600' : 'text-red-600'" 
-                     class="mt-2 text-sm"></div>
-            </div>
-            
-            <div class="flex justify-end space-x-3">
-                <button @click="showCreateModal = false; newRepoName = ''; createMessage = ''" 
-                        class="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    Cancel
-                </button>
-                <button @click="createRepository()" 
-                        class="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700">
-                    Create Repository
-                </button>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" @click="hideCreateModal()">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-primary" @click="createRepository()">
+                        Create Repository
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
     <script>
         function dashboard() {
             return {
-                showCreateModal: false,
                 newRepoName: '',
                 createMessage: '',
                 createSuccess: false,
                 credentials: null,
+                modal: null,
+                
+                init() {
+                    // Initialize Bootstrap modal
+                    this.modal = new bootstrap.Modal(document.getElementById('createModal'));
+                },
+                
+                showCreateModal() {
+                    this.modal.show();
+                },
+                
+                hideCreateModal() {
+                    this.modal.hide();
+                    this.newRepoName = '';
+                    this.createMessage = '';
+                },
                 
                 async createRepository() {
                     if (!this.newRepoName.trim()) {
@@ -250,7 +235,7 @@ const dashboardTemplate = `
                             this.newRepoName = '';
                             setTimeout(() => {
                                 this.createMessage = '';
-                                this.showCreateModal = false;
+                                this.hideCreateModal();
                                 window.location.reload();
                             }, 2000);
                         } else {
