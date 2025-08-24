@@ -231,6 +231,9 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			w.Write([]byte("Manifest not found on SFTP"))
 			return
 		}
+		// Set proper Content-Type header for manifest
+		w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+		w.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
 		w.WriteHeader(http.StatusOK)
 		w.Write(manifest)
 	default:
