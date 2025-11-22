@@ -85,8 +85,26 @@ func (h *APIHandler) getDashboardData() DashboardData {
 		repoMap[repo.Name] = true
 	}
 
-	repositories := []Repository{}
+	// Filter out repositories that are prefixes of other repositories
+	// (e.g., "ochi" should not appear if "ochi/nginx" exists)
+	filteredRepos := make(map[string]bool)
 	for repoName := range repoMap {
+		isPrefix := false
+		// Check if this repository name is a prefix of any other repository
+		for otherRepo := range repoMap {
+			if repoName != otherRepo && strings.HasPrefix(otherRepo, repoName+"/") {
+				isPrefix = true
+				break
+			}
+		}
+		// Only include if it's not a prefix of another repository
+		if !isPrefix {
+			filteredRepos[repoName] = true
+		}
+	}
+
+	repositories := []Repository{}
+	for repoName := range filteredRepos {
 		// Get images for this repository
 		images, err := h.db.GetImagesByRepository(repoName)
 		if err != nil {
