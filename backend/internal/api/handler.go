@@ -416,7 +416,6 @@ func (h *APIHandler) GetTagsByRepositoryHandler(w http.ResponseWriter, r *http.R
 
 	groupName := parts[0]
 	repoNameOnly := parts[1]
-	fullRepoName := groupName + "/" + repoNameOnly
 
 	// URL decode
 	decodedGroup, err := url.QueryUnescape(groupName)
@@ -427,7 +426,7 @@ func (h *APIHandler) GetTagsByRepositoryHandler(w http.ResponseWriter, r *http.R
 	if err != nil {
 		decodedRepo = repoNameOnly
 	}
-	fullRepoName = decodedGroup + "/" + decodedRepo
+	fullRepoName := decodedGroup + "/" + decodedRepo
 
 	images, err := h.db.GetImagesByRepository(fullRepoName)
 	if err != nil {
