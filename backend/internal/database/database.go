@@ -146,6 +146,18 @@ func (d *Database) createTables() error {
 		return err
 	}
 
+	// Create groups table
+	_, err = d.db.Exec(`
+		CREATE TABLE IF NOT EXISTS groups (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL UNIQUE,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+		)
+	`)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -485,9 +497,45 @@ func (d *Database) GetImagesByRepository(name string) ([]*Image, error) {
 	return images, nil
 }
 
-// GetGroups returns all unique groups (first part before /) from repository names
+// CreateGroup creates a new group in the database
+func (d *Database) CreateGroup(name string) error {
+	_, err := d.db.Exec(`
+		INSERT INTO groups (name, created_at)
+		VALUES (?, CURRENT_TIMESTAMP)
+	`, name)
+	return err
+}
+
+// GetGroups returns all unique groups from both the groups table and repository names
 func (d *Database) GetGroups() ([]string, error) {
+	// Get groups from groups table
 	rows, err := d.db.Query(`
+		SELECT name FROM groups ORDER BY name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	groupMap := make(map[string]bool)
+	var groups []string
+	
+	// Add groups from groups table
+	for rows.Next() {
+		var groupName string
+		err := rows.Scan(&groupName)
+		if err != nil {
+			return nil, err
+		}
+		if !groupMap[groupName] {
+			groups = append(groups, groupName)
+			groupMap[groupName] = true
+		}
+	}
+	rows.Close()
+
+	// Get groups from images table (extracted from repository names)
+	rows, err = d.db.Query(`
 		SELECT DISTINCT 
 			CASE 
 				WHEN name LIKE '%/%' THEN substr(name, 1, instr(name, '/') - 1)
@@ -501,15 +549,19 @@ func (d *Database) GetGroups() ([]string, error) {
 	}
 	defer rows.Close()
 
-	var groups []string
+	// Add groups from images table (avoid duplicates)
 	for rows.Next() {
 		var groupName string
 		err := rows.Scan(&groupName)
 		if err != nil {
 			return nil, err
 		}
-		groups = append(groups, groupName)
+		if !groupMap[groupName] {
+			groups = append(groups, groupName)
+			groupMap[groupName] = true
+		}
 	}
+
 	return groups, nil
 }
 

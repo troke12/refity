@@ -362,7 +362,7 @@ func (h *APIHandler) CreateGroupHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Check if group already exists by checking if any repository with this group exists
+	// Check if group already exists by checking in database and existing groups
 	existingGroups, err := h.db.GetGroups()
 	if err != nil {
 		log.Printf("Failed to get groups: %v", err)
@@ -377,12 +377,27 @@ func (h *APIHandler) CreateGroupHandler(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	// Create group in database first
+	err = h.db.CreateGroup(req.Name)
+	if err != nil {
+		// Check if it's a duplicate key error
+		if strings.Contains(err.Error(), "UNIQUE constraint") || strings.Contains(err.Error(), "duplicate") {
+			http.Error(w, "Group already exists", http.StatusConflict)
+			return
+		}
+		log.Printf("Failed to create group in database: %v", err)
+		http.Error(w, "Failed to create group", http.StatusInternalServerError)
+		return
+	}
+
 	// Create group folder structure in SFTP
 	err = h.sftpDriver.CreateGroupFolder(context.TODO(), req.Name)
 	if err != nil {
 		log.Printf("Failed to create group folder in SFTP: %v", err)
-		http.Error(w, "Failed to create group folder", http.StatusInternalServerError)
-		return
+		// Don't fail the request, just log the error
+		// The folder will be created automatically when needed during upload
+	} else {
+		log.Printf("Successfully created group folder structure for: %s", req.Name)
 	}
 
 	// Invalidate cache
