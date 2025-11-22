@@ -46,9 +46,15 @@ func (r *APIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 
 	// Groups routes (require JWT)
-	if path == "/api/groups" && req.Method == http.MethodGet {
-		auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.GetGroupsHandler)).ServeHTTP(w, req)
-		return
+	if path == "/api/groups" {
+		if req.Method == http.MethodGet {
+			auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.GetGroupsHandler)).ServeHTTP(w, req)
+			return
+		}
+		if req.Method == http.MethodPost {
+			auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.CreateGroupHandler)).ServeHTTP(w, req)
+			return
+		}
 	}
 
 	// Group repositories routes (require JWT)

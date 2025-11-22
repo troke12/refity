@@ -36,6 +36,7 @@ type StorageDriver interface {
 	Walk(ctx context.Context, path string, f WalkFn, options ...func(*WalkOptions)) error
 	CreateRepositoryFolder(ctx context.Context, repoName string) error
 	DeleteRepositoryFolder(ctx context.Context, repoName string) error
+	CreateGroupFolder(ctx context.Context, groupName string) error
 }
 
 type FileWriter interface {
@@ -206,6 +207,20 @@ func (d *PoolStorageDriver) CreateRepositoryFolder(ctx context.Context, repoName
 		if err := createDirRecursiveWithClient(client, subdir); err != nil {
 			return fmt.Errorf("failed to create subdirectory %s: %v", subdir, err)
 		}
+	}
+	
+	return nil
+}
+
+// CreateGroupFolder creates the folder structure for a group
+func (d *PoolStorageDriver) CreateGroupFolder(ctx context.Context, groupName string) error {
+	client := d.Pool.getClient()
+	defer d.Pool.putClient(client)
+	
+	// Create the group folder
+	groupPath := "registry/" + groupName
+	if err := createDirRecursiveWithClient(client, groupPath); err != nil {
+		return fmt.Errorf("failed to create group folder: %v", err)
 	}
 	
 	return nil
@@ -524,6 +539,17 @@ func (d *Driver) CreateRepositoryFolder(ctx context.Context, repoName string) er
 		if err := d.createDirRecursive(subdir); err != nil {
 			return fmt.Errorf("failed to create subdirectory %s: %v", subdir, err)
 		}
+	}
+	
+	return nil
+}
+
+// CreateGroupFolder creates the folder structure for a group
+func (d *Driver) CreateGroupFolder(ctx context.Context, groupName string) error {
+	// Create the group folder
+	groupPath := "registry/" + groupName
+	if err := d.createDirRecursive(groupPath); err != nil {
+		return fmt.Errorf("failed to create group folder: %v", err)
 	}
 	
 	return nil

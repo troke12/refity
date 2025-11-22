@@ -87,6 +87,10 @@ export const groupsAPI = {
     const response = await api.get('/api/groups');
     return response.data;
   },
+  create: async (name) => {
+    const response = await api.post('/api/groups', { name });
+    return response.data;
+  },
   getRepositories: async (groupName) => {
     const response = await api.get(`/api/groups/${encodeURIComponent(groupName)}/repositories`);
     return response.data;

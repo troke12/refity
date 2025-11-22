@@ -4,14 +4,14 @@ import { Link } from 'react-router-dom';
 import { dashboardAPI, authAPI } from '../services/api';
 import { formatBytes } from '../utils/formatBytes';
 import StatCard from '../components/StatCard';
-import CreateRepositoryModal from '../components/CreateRepositoryModal';
+import CreateGroupModal from '../components/CreateGroupModal';
 import './Dashboard.css';
 
 function Dashboard() {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
   const navigate = useNavigate();
 
   const loadData = async () => {
@@ -42,8 +42,8 @@ function Dashboard() {
     }
   };
 
-  const handleRepositoryCreated = () => {
-    setShowCreateModal(false);
+  const handleGroupCreated = () => {
+    setShowCreateGroupModal(false);
     loadData();
   };
 
@@ -115,10 +115,10 @@ function Dashboard() {
 
         <div className="mb-4">
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => setShowCreateGroupModal(true)}
             className="btn btn-primary"
           >
-            <i className="bi bi-plus-circle me-2"></i>Create New Repository
+            <i className="bi bi-plus-circle me-2"></i>Create New Group
           </button>
         </div>
 
@@ -155,16 +155,16 @@ function Dashboard() {
                 ))}
               </div>
             ) : (
-              <p className="text-muted mb-0">No groups found. Create a repository to get started.</p>
+              <p className="text-muted mb-0">No groups found. Create a group to get started.</p>
             )}
           </div>
         </div>
       </div>
 
-      <CreateRepositoryModal
-        show={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onCreated={handleRepositoryCreated}
+      <CreateGroupModal
+        show={showCreateGroupModal}
+        onClose={() => setShowCreateGroupModal(false)}
+        onCreated={handleGroupCreated}
       />
     </div>
   );

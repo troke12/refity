@@ -334,6 +334,70 @@ func (h *APIHandler) GetGroupsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// CreateGroupHandler creates a new group
+func (h *APIHandler) CreateGroupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse JSON body
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	// Validate group name
+	if req.Name == "" {
+		http.Error(w, "Group name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Validate group name format (no slashes allowed)
+	if strings.Contains(req.Name, "/") {
+		http.Error(w, "Group name cannot contain forward slashes", http.StatusBadRequest)
+		return
+	}
+
+	// Check if group already exists by checking if any repository with this group exists
+	existingGroups, err := h.db.GetGroups()
+	if err != nil {
+		log.Printf("Failed to get groups: %v", err)
+		http.Error(w, "Failed to check existing groups", http.StatusInternalServerError)
+		return
+	}
+
+	for _, group := range existingGroups {
+		if group == req.Name {
+			http.Error(w, "Group already exists", http.StatusConflict)
+			return
+		}
+	}
+
+	// Create group folder structure in SFTP
+	err = h.sftpDriver.CreateGroupFolder(context.TODO(), req.Name)
+	if err != nil {
+		log.Printf("Failed to create group folder in SFTP: %v", err)
+		http.Error(w, "Failed to create group folder", http.StatusInternalServerError)
+		return
+	}
+
+	// Invalidate cache
+	h.cacheMutex.Lock()
+	delete(h.cache, "dashboard")
+	h.cacheMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"group":   req.Name,
+		"message": fmt.Sprintf("Group %s created successfully", req.Name),
+	})
+}
+
 // GetRepositoriesByGroupHandler returns all repositories in a group
 func (h *APIHandler) GetRepositoriesByGroupHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
