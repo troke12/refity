@@ -85,11 +85,16 @@ docker push localhost:5000/yourgroup/nginx:latest
 
 ### Backend Development
 
+**Important**: You must run Go commands from the `backend/` directory, not from the root folder.
+
 ```sh
 cd backend
 go mod download
-go run cmd/server/main.go
+go build ./cmd/server    # Build the binary
+go run ./cmd/server/main.go    # Or run directly
 ```
+
+The backend will start on port 5000 (or PORT from environment variable).
 
 ### Frontend Development
 
