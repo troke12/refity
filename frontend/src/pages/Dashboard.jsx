@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { dashboardAPI, repositoriesAPI, authAPI } from '../services/api';
+import { Link } from 'react-router-dom';
+import { dashboardAPI, authAPI } from '../services/api';
 import { formatBytes } from '../utils/formatBytes';
 import StatCard from '../components/StatCard';
-import RepositoryList from '../components/RepositoryList';
 import CreateRepositoryModal from '../components/CreateRepositoryModal';
 import './Dashboard.css';
 
@@ -47,13 +47,6 @@ function Dashboard() {
     loadData();
   };
 
-  const handleRepositoryDeleted = () => {
-    loadData();
-  };
-
-  const handleTagDeleted = () => {
-    loadData();
-  };
 
   if (isLoading) {
     return (
@@ -105,8 +98,8 @@ function Dashboard() {
           <div className="col-md-4">
             <StatCard
               icon="bi-folder"
-              label="Total Repositories"
-              value={data?.repositories?.length || 0}
+              label="Total Groups"
+              value={data?.groups?.length || 0}
               gradient="success"
             />
           </div>
@@ -129,11 +122,43 @@ function Dashboard() {
           </button>
         </div>
 
-        <RepositoryList
-          repositories={data?.repositories || []}
-          onRepositoryDeleted={handleRepositoryDeleted}
-          onTagDeleted={handleTagDeleted}
-        />
+        <div className="card">
+          <div className="card-header">
+            <h5 className="mb-0">
+              <i className="bi bi-folder me-2"></i>Groups
+            </h5>
+            <small className="text-muted">List of all groups and their repositories</small>
+          </div>
+          <div className="card-body">
+            {data?.groups && data.groups.length > 0 ? (
+              <div className="row g-3">
+                {data.groups.map((group) => (
+                  <div key={group.name} className="col-md-4">
+                    <Link
+                      to={`/group/${encodeURIComponent(group.name)}`}
+                      className="text-decoration-none"
+                    >
+                      <div className="card h-100 group-card">
+                        <div className="card-body">
+                          <h6 className="card-title">
+                            <i className="bi bi-folder-fill me-2 text-primary"></i>
+                            {group.name}
+                          </h6>
+                          <p className="card-text text-muted mb-0">
+                            <i className="bi bi-box me-1"></i>
+                            {group.repositories} {group.repositories === 1 ? 'repository' : 'repositories'}
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted mb-0">No groups found. Create a repository to get started.</p>
+            )}
+          </div>
+        </div>
       </div>
 
       <CreateRepositoryModal

@@ -49,9 +49,14 @@ type Repository struct {
 }
 
 type DashboardData struct {
-	Repositories []Repository `json:"repositories"`
+	Groups       []Group      `json:"groups"`
 	TotalImages  int          `json:"total_images"`
 	TotalSize    int64        `json:"total_size"`
+}
+
+type Group struct {
+	Name         string `json:"name"`
+	Repositories int    `json:"repositories"`
 }
 
 func (h *APIHandler) getDashboardData() DashboardData {
@@ -62,81 +67,31 @@ func (h *APIHandler) getDashboardData() DashboardData {
 		return DashboardData{}
 	}
 
-	// Get all repositories (both from images and manually created)
-	repoNames, err := h.db.GetRepositories()
+	// Get all groups
+	groupNames, err := h.db.GetGroups()
 	if err != nil {
-		log.Printf("Failed to get repositories: %v", err)
+		log.Printf("Failed to get groups: %v", err)
 		return DashboardData{}
 	}
 
-	// Get manually created repositories
-	manualRepos, err := h.db.GetAllRepositories()
-	if err != nil {
-		log.Printf("Failed to get manual repositories: %v", err)
-		return DashboardData{}
-	}
-
-	// Create a map of all repository names
-	repoMap := make(map[string]bool)
-	for _, repoName := range repoNames {
-		repoMap[repoName] = true
-	}
-	for _, repo := range manualRepos {
-		repoMap[repo.Name] = true
-	}
-
-	// Filter out repositories that are prefixes of other repositories
-	// (e.g., "ochi" should not appear if "ochi/nginx" exists)
-	filteredRepos := make(map[string]bool)
-	for repoName := range repoMap {
-		isPrefix := false
-		// Check if this repository name is a prefix of any other repository
-		for otherRepo := range repoMap {
-			if repoName != otherRepo && strings.HasPrefix(otherRepo, repoName+"/") {
-				isPrefix = true
-				break
-			}
-		}
-		// Only include if it's not a prefix of another repository
-		if !isPrefix {
-			filteredRepos[repoName] = true
-		}
-	}
-
-	repositories := []Repository{}
-	for repoName := range filteredRepos {
-		// Get images for this repository
-		images, err := h.db.GetImagesByRepository(repoName)
+	// Build groups with repository count
+	groups := []Group{}
+	for _, groupName := range groupNames {
+		repos, err := h.db.GetRepositoriesByGroup(groupName)
 		if err != nil {
-			log.Printf("Failed to get images for repository %s: %v", repoName, err)
-			// Even if no images, show the repository if it was manually created
-			repositories = append(repositories, Repository{
-				Name: repoName,
-				Tags: []Tag{},
-			})
+			log.Printf("Failed to get repositories for group %s: %v", groupName, err)
 			continue
 		}
-
-		// Convert images to tags
-		var tags []Tag
-		for _, img := range images {
-			tags = append(tags, Tag{
-				Name: img.Tag,
-				Size: img.Size,
-			})
-		}
-
-		repository := Repository{
-			Name: repoName,
-			Tags: tags,
-		}
-		repositories = append(repositories, repository)
+		groups = append(groups, Group{
+			Name:         groupName,
+			Repositories: len(repos),
+		})
 	}
 
 	return DashboardData{
-		Repositories: repositories,
-		TotalImages:  totalImages,
-		TotalSize:    totalSize,
+		Groups:      groups,
+		TotalImages: totalImages,
+		TotalSize:   totalSize,
 	}
 }
 
@@ -183,10 +138,7 @@ func (h *APIHandler) GetRepositoriesHandler(w http.ResponseWriter, r *http.Reque
 	if cached, exists := h.cache["dashboard"]; exists && time.Since(cached.timestamp) < cacheDuration {
 		h.cacheMutex.RUnlock()
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"repositories": cached.data.Repositories,
-			"total":        len(cached.data.Repositories),
-		})
+		json.NewEncoder(w).Encode(cached.data)
 		return
 	}
 	h.cacheMutex.RUnlock()
@@ -203,10 +155,7 @@ func (h *APIHandler) GetRepositoriesHandler(w http.ResponseWriter, r *http.Reque
 	h.cacheMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"repositories": data.Repositories,
-		"total":        len(data.Repositories),
-	})
+	json.NewEncoder(w).Encode(data)
 }
 
 func (h *APIHandler) CreateRepositoryHandler(w http.ResponseWriter, r *http.Request) {
@@ -361,6 +310,146 @@ func (h *APIHandler) DeleteTagHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": fmt.Sprintf("Tag %s deleted from repository %s", tag, repo),
+	})
+}
+
+// GetGroupsHandler returns all groups
+func (h *APIHandler) GetGroupsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	groups, err := h.db.GetGroups()
+	if err != nil {
+		log.Printf("Failed to get groups: %v", err)
+		http.Error(w, "Failed to get groups", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"groups": groups,
+		"total":  len(groups),
+	})
+}
+
+// GetRepositoriesByGroupHandler returns all repositories in a group
+func (h *APIHandler) GetRepositoriesByGroupHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract group name from path: /api/groups/{groupName}/repositories
+	path := strings.TrimPrefix(r.URL.Path, "/api/groups/")
+	groupName := strings.TrimSuffix(path, "/repositories")
+	
+	// URL decode the group name
+	decodedGroup, err := url.QueryUnescape(groupName)
+	if err != nil {
+		decodedGroup = groupName
+	}
+
+	repositories, err := h.db.GetRepositoriesByGroup(decodedGroup)
+	if err != nil {
+		log.Printf("Failed to get repositories for group %s: %v", decodedGroup, err)
+		http.Error(w, "Failed to get repositories", http.StatusInternalServerError)
+		return
+	}
+
+	// Get repository details with tags
+	repoList := []Repository{}
+	for _, repoName := range repositories {
+		images, err := h.db.GetImagesByRepository(repoName)
+		if err != nil {
+			log.Printf("Failed to get images for repository %s: %v", repoName, err)
+			continue
+		}
+
+		var tags []Tag
+		var totalSize int64
+		for _, img := range images {
+			tags = append(tags, Tag{
+				Name: img.Tag,
+				Size: img.Size,
+			})
+			totalSize += img.Size
+		}
+
+		// Extract repository name without group (e.g., "nginx" from "ochi/nginx")
+		repoNameOnly := repoName
+		if strings.Contains(repoName, "/") {
+			parts := strings.Split(repoName, "/")
+			repoNameOnly = parts[len(parts)-1]
+		}
+
+		repoList = append(repoList, Repository{
+			Name: repoNameOnly,
+			Tags: tags,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"group":        decodedGroup,
+		"repositories": repoList,
+		"total":        len(repoList),
+	})
+}
+
+// GetTagsByRepositoryHandler returns all tags for a repository
+func (h *APIHandler) GetTagsByRepositoryHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Extract group and repository from path: /api/groups/{groupName}/repositories/{repoName}/tags
+	path := strings.TrimPrefix(r.URL.Path, "/api/groups/")
+	path = strings.TrimSuffix(path, "/tags")
+	parts := strings.Split(path, "/repositories/")
+	if len(parts) != 2 {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+
+	groupName := parts[0]
+	repoNameOnly := parts[1]
+	fullRepoName := groupName + "/" + repoNameOnly
+
+	// URL decode
+	decodedGroup, err := url.QueryUnescape(groupName)
+	if err != nil {
+		decodedGroup = groupName
+	}
+	decodedRepo, err := url.QueryUnescape(repoNameOnly)
+	if err != nil {
+		decodedRepo = repoNameOnly
+	}
+	fullRepoName = decodedGroup + "/" + decodedRepo
+
+	images, err := h.db.GetImagesByRepository(fullRepoName)
+	if err != nil {
+		log.Printf("Failed to get images for repository %s: %v", fullRepoName, err)
+		http.Error(w, "Repository not found", http.StatusNotFound)
+		return
+	}
+
+	var tags []Tag
+	for _, img := range images {
+		tags = append(tags, Tag{
+			Name: img.Tag,
+			Size: img.Size,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"group":      decodedGroup,
+		"repository": decodedRepo,
+		"tags":       tags,
+		"total":      len(tags),
 	})
 }
 

@@ -2,6 +2,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useState, useEffect } from 'react';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import GroupPage from './pages/GroupPage';
+import RepositoryPage from './pages/RepositoryPage';
 import { isAuthenticated } from './services/api';
 
 function App() {
@@ -21,6 +23,8 @@ function App() {
       <Routes>
         <Route path="/login" element={auth ? <Navigate to="/" /> : <Login onLogin={() => setAuth(true)} />} />
         <Route path="/" element={auth ? <Dashboard /> : <Navigate to="/login" />} />
+        <Route path="/group/:groupName" element={auth ? <GroupPage /> : <Navigate to="/login" />} />
+        <Route path="/group/:groupName/repository/:repoName" element={auth ? <RepositoryPage /> : <Navigate to="/login" />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>

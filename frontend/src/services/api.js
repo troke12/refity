@@ -82,6 +82,21 @@ export const dashboardAPI = {
   },
 };
 
+export const groupsAPI = {
+  getAll: async () => {
+    const response = await api.get('/api/groups');
+    return response.data;
+  },
+  getRepositories: async (groupName) => {
+    const response = await api.get(`/api/groups/${encodeURIComponent(groupName)}/repositories`);
+    return response.data;
+  },
+  getTags: async (groupName, repoName) => {
+    const response = await api.get(`/api/groups/${encodeURIComponent(groupName)}/repositories/${encodeURIComponent(repoName)}/tags`);
+    return response.data;
+  },
+};
+
 export const isAuthenticated = () => {
   const token = localStorage.getItem('token');
   if (!token) return false;

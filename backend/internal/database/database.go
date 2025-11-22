@@ -485,3 +485,56 @@ func (d *Database) GetImagesByRepository(name string) ([]*Image, error) {
 	return images, nil
 }
 
+// GetGroups returns all unique groups (first part before /) from repository names
+func (d *Database) GetGroups() ([]string, error) {
+	rows, err := d.db.Query(`
+		SELECT DISTINCT 
+			CASE 
+				WHEN name LIKE '%/%' THEN substr(name, 1, instr(name, '/') - 1)
+				ELSE name
+			END as group_name
+		FROM images
+		ORDER BY group_name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var groups []string
+	for rows.Next() {
+		var groupName string
+		err := rows.Scan(&groupName)
+		if err != nil {
+			return nil, err
+		}
+		groups = append(groups, groupName)
+	}
+	return groups, nil
+}
+
+// GetRepositoriesByGroup returns all repositories (images) that belong to a specific group
+func (d *Database) GetRepositoriesByGroup(groupName string) ([]string, error) {
+	rows, err := d.db.Query(`
+		SELECT DISTINCT name
+		FROM images
+		WHERE name LIKE ? || '/%'
+		ORDER BY name
+	`, groupName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var repositories []string
+	for rows.Next() {
+		var repoName string
+		err := rows.Scan(&repoName)
+		if err != nil {
+			return nil, err
+		}
+		repositories = append(repositories, repoName)
+	}
+	return repositories, nil
+}
+

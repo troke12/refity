@@ -45,16 +45,31 @@ func (r *APIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	// Repository routes (require JWT)
+	// Groups routes (require JWT)
+	if path == "/api/groups" && req.Method == http.MethodGet {
+		auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.GetGroupsHandler)).ServeHTTP(w, req)
+		return
+	}
+
+	// Group repositories routes (require JWT)
+	if strings.HasPrefix(path, "/api/groups/") && strings.HasSuffix(path, "/repositories") && req.Method == http.MethodGet {
+		auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.GetRepositoriesByGroupHandler)).ServeHTTP(w, req)
+		return
+	}
+
+	// Repository tags routes (require JWT)
+	if strings.HasPrefix(path, "/api/groups/") && strings.HasSuffix(path, "/tags") && req.Method == http.MethodGet {
+		auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.GetTagsByRepositoryHandler)).ServeHTTP(w, req)
+		return
+	}
+
+	// Repository routes (require JWT) - for backward compatibility and create/delete
 	if strings.HasPrefix(path, "/api/repositories") {
 		// Check if it's a specific repository endpoint
 		repoPath := strings.TrimPrefix(path, "/api/repositories")
 		if repoPath == "" {
-			// GET /api/repositories or POST /api/repositories
-			if req.Method == http.MethodGet {
-				auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.GetRepositoriesHandler)).ServeHTTP(w, req)
-				return
-			} else if req.Method == http.MethodPost {
+			// POST /api/repositories (create)
+			if req.Method == http.MethodPost {
 				auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.CreateRepositoryHandler)).ServeHTTP(w, req)
 				return
 			}
