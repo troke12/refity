@@ -644,7 +644,7 @@ const dashboardTemplate = `
                              x-text="repoNameError" 
                              class="invalid-feedback d-block">
                         </div>
-                        <div x-show="newRepoName.trim() && !repoNameError && isValidRepoName() && newRepoName.trim().length >= 2" 
+                        <div x-show="newRepoName && newRepoName.trim().length >= 2 && !repoNameError && isValidRepoName()" 
                              x-cloak
                              class="valid-feedback d-block">
                             <i class="bi bi-check-circle me-1"></i>Valid repository name
@@ -671,13 +671,8 @@ const dashboardTemplate = `
                     <button type="button" 
                             class="btn btn-primary" 
                             @click="createRepository()"
-                            :disabled="isCreating || !isValidRepoName() || !newRepoName.trim()">
-                        <span x-show="!isCreating" x-cloak>
-                            <i class="bi bi-check-lg me-2"></i>Create Repository
-                        </span>
-                        <span x-show="isCreating" x-cloak>
-                            <span class="loading me-2"></span>Creating...
-                        </span>
+                            :disabled="isCreating || !isValidRepoName() || !newRepoName.trim()"
+                            x-html="buttonText">
                     </button>
                 </div>
             </div>
@@ -696,6 +691,13 @@ const dashboardTemplate = `
                 isCreating: false,
                 isRefreshing: false,
                 repoNameError: '',
+                
+                get buttonText() {
+                    if (this.isCreating) {
+                        return '<span class="loading me-2"></span>Creating...';
+                    }
+                    return '<i class="bi bi-check-lg me-2"></i>Create Repository';
+                },
                 
                 init() {
                     // Initialize Bootstrap modal
@@ -744,12 +746,13 @@ const dashboardTemplate = `
                 },
                 
                 isValidRepoName() {
-                    if (!this.newRepoName.trim()) {
+                    const name = this.newRepoName ? this.newRepoName.trim() : '';
+                    if (!name || name.length < 2) {
                         return false;
                     }
                     // Docker repository name validation: lowercase, alphanumeric, hyphens, underscores, forward slashes
                     const repoNameRegex = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$/;
-                    return repoNameRegex.test(this.newRepoName.trim());
+                    return repoNameRegex.test(name);
                 },
                 
                 validateRepoName() {
