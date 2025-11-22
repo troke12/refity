@@ -1,0 +1,25 @@
+.container-main {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.navbar {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  padding: 1rem 0;
+  border-radius: 0 0 16px 16px;
+}
+
+.navbar-brand {
+  font-weight: 700;
+  font-size: 1.5rem;
+  letter-spacing: -0.5px;
+}
+
+@media (max-width: 768px) {
+  .container-main {
+    padding: 1rem;
+  }
+}
+
