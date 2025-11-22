@@ -136,11 +136,17 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 	manifestPath = strings.TrimLeft(manifestPath, "/")
 	switch r.Method {
 	case http.MethodPut:
-		// Check if repository exists in database
+		// Auto-create repository if it doesn't exist (Docker registry standard behavior)
 		if db != nil {
 			if _, err := db.GetRepository(name); err != nil {
-				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
-				return
+				// Repository doesn't exist, create it automatically
+				_, createErr := db.CreateRepository(name)
+				if createErr != nil {
+					log.Printf("handleManifest: failed to auto-create repository %s: %v", name, createErr)
+					// Continue anyway, the upload might still work
+				} else {
+					log.Printf("handleManifest: auto-created repository %s", name)
+				}
 			}
 		}
 		
@@ -283,11 +289,17 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 
-	// Check if repository exists in database
+	// Auto-create repository if it doesn't exist (Docker registry standard behavior)
 	if db != nil {
 		if _, err := db.GetRepository(name); err != nil {
-			registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
-			return
+			// Repository doesn't exist, create it automatically
+			_, createErr := db.CreateRepository(name)
+			if createErr != nil {
+				log.Printf("commitBlobUpload: failed to auto-create repository %s: %v", name, createErr)
+				// Continue anyway, the upload might still work
+			} else {
+				log.Printf("commitBlobUpload: auto-created repository %s", name)
+			}
 		}
 	}
 
