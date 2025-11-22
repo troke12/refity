@@ -76,6 +76,21 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 func initiateBlobUpload(w http.ResponseWriter, _ *http.Request, path string) {
 	uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
 	name := strings.TrimSuffix(strings.Split(path, "/blobs/")[0], "/")
+	
+	// Auto-create repository if it doesn't exist (Docker registry standard behavior)
+	if db != nil {
+		if _, err := db.GetRepository(name); err != nil {
+			// Repository doesn't exist, create it automatically
+			_, createErr := db.CreateRepository(name)
+			if createErr != nil {
+				log.Printf("initiateBlobUpload: failed to auto-create repository %s: %v", name, createErr)
+				// Continue anyway, the upload might still work
+			} else {
+				log.Printf("initiateBlobUpload: auto-created repository %s", name)
+			}
+		}
+	}
+	
 	location := "/v2/" + name + "/blobs/uploads/" + uploadID
 	w.Header().Set("Location", location)
 	w.Header().Set("Range", "0-0")
