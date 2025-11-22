@@ -454,6 +454,10 @@ const dashboardTemplate = `
                 margin-bottom: 1rem;
             }
         }
+
+        [x-cloak] {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -640,7 +644,8 @@ const dashboardTemplate = `
                              x-text="repoNameError" 
                              class="invalid-feedback d-block">
                         </div>
-                        <div x-show="newRepoName && !repoNameError && isValidRepoName()" 
+                        <div x-show="newRepoName.trim() && !repoNameError && isValidRepoName() && newRepoName.trim().length >= 2" 
+                             x-cloak
                              class="valid-feedback d-block">
                             <i class="bi bi-check-circle me-1"></i>Valid repository name
                         </div>
@@ -667,10 +672,10 @@ const dashboardTemplate = `
                             class="btn btn-primary" 
                             @click="createRepository()"
                             :disabled="isCreating || !isValidRepoName() || !newRepoName.trim()">
-                        <span x-show="!isCreating">
+                        <span x-show="!isCreating" x-cloak>
                             <i class="bi bi-check-lg me-2"></i>Create Repository
                         </span>
-                        <span x-show="isCreating">
+                        <span x-show="isCreating" x-cloak>
                             <span class="loading me-2"></span>Creating...
                         </span>
                     </button>
@@ -826,7 +831,13 @@ const dashboardTemplate = `
                             body: JSON.stringify({ name: this.newRepoName.trim() })
                         });
 
-                        const result = await response.json();
+                        let result;
+                        try {
+                            result = await response.json();
+                        } catch (e) {
+                            // If response is not JSON, use status text
+                            result = { message: response.statusText || 'Failed to create repository' };
+                        }
                         
                         if (response.ok) {
                             this.createMessage = result.message || 'Repository created successfully!';
@@ -841,11 +852,12 @@ const dashboardTemplate = `
                         } else {
                             this.createMessage = result.message || 'Failed to create repository';
                             this.createSuccess = false;
+                            this.isCreating = false;
                         }
                     } catch (error) {
-                        this.createMessage = 'Error creating repository: ' + error.message;
+                        console.error('Error creating repository:', error);
+                        this.createMessage = 'Error creating repository: ' + (error.message || 'Unknown error');
                         this.createSuccess = false;
-                    } finally {
                         this.isCreating = false;
                     }
                 },
