@@ -6,29 +6,151 @@
 
 .navbar {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  padding: 1rem 0;
-  border-radius: 0 0 16px 16px;
+  box-shadow: var(--shadow-md);
+  padding: 1.25rem 0;
+  border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg);
+  backdrop-filter: blur(10px);
 }
 
 .navbar-brand {
   font-weight: 700;
   font-size: 1.5rem;
   letter-spacing: -0.5px;
+  color: white !important;
+}
+
+.navbar .btn-outline-light {
+  border-radius: var(--border-radius-sm);
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  transition: var(--transition);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.navbar .btn-outline-light:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.card {
+  border: none;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+  background: white;
+  overflow: hidden;
+}
+
+.card-header {
+  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  border-bottom: 1px solid #e2e8f0;
+  padding: 1.5rem;
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
+}
+
+.card-header h5 {
+  font-weight: 700;
+  color: #1a202c;
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.card-header small {
+  color: #718096;
+  font-size: 0.875rem;
+}
+
+.card-body {
+  padding: 1.5rem;
 }
 
 .group-card {
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: var(--transition);
   cursor: pointer;
+  border: 1px solid #e2e8f0;
+  position: relative;
+  overflow: hidden;
+}
+
+.group-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--primary-gradient);
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
 }
 
 .group-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: #cbd5e0;
+}
+
+.group-card:hover::before {
+  transform: scaleX(1);
+}
+
+.group-card .card-title {
+  font-weight: 600;
+  color: #1a202c;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.group-card .card-title i {
+  color: #667eea;
+}
+
+.group-card .card-text {
+  color: #718096;
+  font-size: 0.9rem;
+}
+
+.btn-primary {
+  background: var(--primary-gradient);
+  border: none;
+  border-radius: var(--border-radius-sm);
+  padding: 0.75rem 1.5rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #718096;
+}
+
+.empty-state i {
+  font-size: 3rem;
+  color: #cbd5e0;
+  margin-bottom: 1rem;
+  display: block;
 }
 
 @media (max-width: 768px) {
   .container-main {
+    padding: 1rem;
+  }
+  
+  .card-header,
+  .card-body {
     padding: 1rem;
   }
 }

@@ -131,7 +131,10 @@ function GroupPage() {
                 })}
               </div>
             ) : (
-              <p className="text-muted mb-0">No repositories found in this group.</p>
+              <div className="empty-state">
+                <i className="bi bi-box-seam"></i>
+                <p className="mb-0">No repositories found in this group.</p>
+              </div>
             )}
           </div>
         </div>

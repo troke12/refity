@@ -155,7 +155,10 @@ function Dashboard() {
                 ))}
               </div>
             ) : (
-              <p className="text-muted mb-0">No groups found. Create a group to get started.</p>
+              <div className="empty-state">
+                <i className="bi bi-folder-x"></i>
+                <p className="mb-0">No groups found. Create a group to get started.</p>
+              </div>
             )}
           </div>
         </div>

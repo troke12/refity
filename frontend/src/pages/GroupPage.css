@@ -1,10 +1,68 @@
 .repository-card {
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition: var(--transition);
   cursor: pointer;
+  border: 1px solid #e2e8f0;
+  position: relative;
+  overflow: hidden;
+}
+
+.repository-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--primary-gradient);
+  transform: scaleX(0);
+  transition: transform 0.3s ease;
 }
 
 .repository-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: #cbd5e0;
+}
+
+.repository-card:hover::before {
+  transform: scaleX(1);
+}
+
+.repository-card .card-title {
+  font-weight: 600;
+  color: #1a202c;
+  font-size: 1.1rem;
+  margin-bottom: 0.75rem;
+}
+
+.repository-card .card-title i {
+  color: #667eea;
+}
+
+.repository-card .card-text {
+  color: #718096;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.breadcrumb {
+  background: transparent;
+  padding: 0;
+  margin-bottom: 1.5rem;
+}
+
+.breadcrumb-item a {
+  color: #667eea;
+  text-decoration: none;
+  transition: var(--transition);
+}
+
+.breadcrumb-item a:hover {
+  color: #764ba2;
+  text-decoration: underline;
+}
+
+.breadcrumb-item.active {
+  color: #718096;
 }
 
