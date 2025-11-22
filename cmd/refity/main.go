@@ -68,7 +68,7 @@ func main() {
 	// Web UI routes (root and dashboard)
 	mainRouter.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		// Check if it's a web UI route
-		if r.URL.Path == "/" || r.URL.Path == "/dashboard" || strings.HasPrefix(r.URL.Path, "/api/") {
+		if r.URL.Path == "/" || r.URL.Path == "/dashboard" || strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/login" || r.URL.Path == "/logout" {
 			webRouter.ServeHTTP(w, r)
 		} else {
 			// Fallback to registry API
@@ -76,7 +76,16 @@ func main() {
 		}
 	})
 
-	authRouter := auth.BasicAuthMiddleware(cfg.RegistryUsername, cfg.RegistryPassword, mainRouter)
+	// Create auth middleware that allows /login and /api/login without auth
+	authRouter := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Allow /login and /api/login without authentication
+		if r.URL.Path == "/login" || r.URL.Path == "/api/login" {
+			mainRouter.ServeHTTP(w, r)
+			return
+		}
+		// For all other routes, require Basic Auth
+		auth.BasicAuthMiddleware(cfg.RegistryUsername, cfg.RegistryPassword, mainRouter).ServeHTTP(w, r)
+	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
