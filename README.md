@@ -4,6 +4,8 @@ A simple, modern Docker private registry with SFTP backend storage and React fro
 
 Store and manage your container images securely on any SFTP server. Refity is designed for teams and organizations who want a self-hosted Docker registry with flexible, secure, and legacy-friendly storage options.
 
+![Dashboard](screenshot/dashboard.png)
+
 ---
 
 ## Features
@@ -148,4 +150,4 @@ On first run, a default admin user is automatically created:
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
