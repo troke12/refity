@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -20,6 +21,8 @@ type WebHandler struct {
 	cache      map[string]cachedData
 	cacheMutex sync.RWMutex
 	lastUpdate time.Time
+	username   string
+	password   string
 }
 
 type cachedData struct {
@@ -29,12 +32,14 @@ type cachedData struct {
 
 const cacheDuration = 30 * time.Second // Cache for 30 seconds
 
-func NewWebHandler(sftpDriver sftp.StorageDriver, db *database.Database) *WebHandler {
+func NewWebHandler(sftpDriver sftp.StorageDriver, db *database.Database, username, password string) *WebHandler {
 	return &WebHandler{
 		sftpDriver: sftpDriver,
 		db:         db,
 		cache:      make(map[string]cachedData),
 		lastUpdate: time.Now(),
+		username:   username,
+		password:   password,
 	}
 }
 
@@ -381,4 +386,100 @@ func (h *WebHandler) APIDeleteRepositoryHandler(w http.ResponseWriter, r *http.R
 		"success": true,
 		"message": fmt.Sprintf("Repository %s deleted", repo),
 	})
+}
+
+func (h *WebHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		// Check if already logged in
+		cookie, err := r.Cookie("refity_auth")
+		if err == nil && cookie != nil && cookie.Value != "" {
+			// Already logged in, redirect to dashboard
+			http.Redirect(w, r, "/", http.StatusFound)
+			return
+		}
+		// Render login page
+		h.renderLogin(w)
+		return
+	}
+
+	if r.Method == http.MethodPost {
+		// Handle login POST
+		var req struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid JSON", http.StatusBadRequest)
+			return
+		}
+
+		// Verify credentials
+		if req.Username != h.username || req.Password != h.password {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"message": "Invalid username or password",
+			})
+			return
+		}
+
+		// Set cookie
+		credentials := fmt.Sprintf("%s:%s", req.Username, req.Password)
+		encoded := base64.StdEncoding.EncodeToString([]byte(credentials))
+		http.SetCookie(w, &http.Cookie{
+			Name:     "refity_auth",
+			Value:    encoded,
+			Path:     "/",
+			MaxAge:   86400, // 24 hours
+			HttpOnly: false, // Allow JavaScript access
+		})
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"message": "Login successful",
+		})
+		return
+	}
+
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+func (h *WebHandler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Clear cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "refity_auth",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: false,
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Logged out successfully",
+	})
+}
+
+func (h *WebHandler) renderLogin(w http.ResponseWriter) {
+	tmpl, err := template.New("login").Parse(loginTemplate)
+	if err != nil {
+		log.Printf("Failed to parse login template: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	err = tmpl.Execute(w, nil)
+	if err != nil {
+		log.Printf("Failed to execute login template: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }

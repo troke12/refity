@@ -55,7 +55,7 @@ func main() {
 	log.Println("Database initialized successfully")
 
 	regRouter := registry.NewRouterWithDeps(localDriver, driver, cfg, db)
-	webRouter := web.NewWebRouter(driver, db)
+	webRouter := web.NewWebRouter(driver, db, cfg.RegistryUsername, cfg.RegistryPassword)
 
 	// Create main router that handles both registry API and web UI
 	mainRouter := http.NewServeMux()

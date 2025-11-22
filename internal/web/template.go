@@ -464,14 +464,18 @@ const dashboardTemplate = `
                 <span class="navbar-brand">
                     <i class="bi bi-box-seam me-2"></i>Refity Docker Registry
                 </span>
-                <div class="navbar-nav ms-auto">
+                <div class="navbar-nav ms-auto d-flex flex-row gap-2">
                     <button @click="refreshData()" 
                             class="btn btn-outline-light"
                             :disabled="isRefreshing">
                         <span x-show="!isRefreshing">
                             <i class="bi bi-arrow-clockwise"></i> Refresh
                         </span>
-                        <span x-show="isRefreshing" class="loading"></span>
+                        <span x-show="isRefreshing" class="loading me-2"></span>
+                    </button>
+                    <button @click="handleLogout()" 
+                            class="btn btn-outline-light">
+                        <i class="bi bi-box-arrow-right me-1"></i>Logout
                     </button>
                 </div>
             </div>
@@ -611,48 +615,6 @@ const dashboardTemplate = `
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @click="hideCreateModal()"></button>
                 </div>
                 <div class="modal-body p-4">
-                    <!-- Authentication Section (if needed) -->
-                    <div x-show="!credentials" class="mb-4 p-3 bg-light rounded">
-                        <div class="d-flex align-items-center mb-3">
-                            <i class="bi bi-shield-lock text-primary me-2 fs-5"></i>
-                            <h6 class="mb-0 fw-bold">Authentication Required</h6>
-                        </div>
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="auth-username" class="form-label">Username</label>
-                                <input type="text" 
-                                       id="auth-username"
-                                       x-model="authUsername" 
-                                       placeholder="Enter username" 
-                                       class="form-control"
-                                       @keyup.enter="focusPassword()">
-                            </div>
-                            <div class="col-md-6">
-                                <label for="auth-password" class="form-label">Password</label>
-                                <div class="input-group">
-                                    <input type="password" 
-                                           id="auth-password"
-                                           x-model="authPassword" 
-                                           placeholder="Enter password" 
-                                           class="form-control"
-                                           @keyup.enter="saveCredentials()">
-                                    <button class="btn btn-outline-secondary" 
-                                            type="button" 
-                                            @click="togglePasswordVisibility()"
-                                            title="Toggle password visibility">
-                                        <i :class="showPassword ? 'bi bi-eye-slash' : 'bi bi-eye'"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        <button type="button" 
-                                class="btn btn-primary btn-sm mt-2"
-                                @click="saveCredentials()"
-                                :disabled="!authUsername || !authPassword">
-                            <i class="bi bi-check-lg me-1"></i>Save Credentials
-                        </button>
-                    </div>
-
                     <!-- Repository Name Section -->
                     <div class="mb-3">
                         <label for="repo-name" class="form-label fw-bold">
@@ -666,7 +628,7 @@ const dashboardTemplate = `
                                :class="{'is-invalid': repoNameError, 'is-valid': newRepoName && !repoNameError && isValidRepoName()}"
                                @input="validateRepoName()"
                                @keyup.enter="createRepository()"
-                               :disabled="!credentials || isCreating"
+                               :disabled="isCreating"
                                autofocus>
                         <div class="form-text">
                             <i class="bi bi-info-circle me-1"></i>
@@ -704,7 +666,7 @@ const dashboardTemplate = `
                     <button type="button" 
                             class="btn btn-primary" 
                             @click="createRepository()"
-                            :disabled="isCreating || !credentials || !isValidRepoName() || !newRepoName.trim()">
+                            :disabled="isCreating || !isValidRepoName() || !newRepoName.trim()">
                         <span x-show="!isCreating">
                             <i class="bi bi-check-lg me-2"></i>Create Repository
                         </span>
@@ -725,29 +687,36 @@ const dashboardTemplate = `
                 newRepoName: '',
                 createMessage: '',
                 createSuccess: false,
-                credentials: null,
                 modal: null,
                 isCreating: false,
                 isRefreshing: false,
-                authUsername: '',
-                authPassword: '',
-                showPassword: false,
                 repoNameError: '',
                 
                 init() {
                     // Initialize Bootstrap modal
                     this.modal = new bootstrap.Modal(document.getElementById('createModal'));
+                    // Check if user is logged in
+                    if (!this.getCookie('refity_auth')) {
+                        window.location.href = '/login';
+                    }
+                },
+                
+                getCookie(name) {
+                    const value = '; ' + document.cookie;
+                    const parts = value.split('; ' + name + '=');
+                    if (parts.length === 2) return parts.pop().split(';').shift();
+                    return null;
+                },
+                
+                getCredentials() {
+                    return this.getCookie('refity_auth');
                 },
                 
                 showCreateModal() {
                     this.modal.show();
                     // Focus input after modal is shown
                     setTimeout(() => {
-                        if (this.credentials) {
-                            document.getElementById('repo-name').focus();
-                        } else {
-                            document.getElementById('auth-username').focus();
-                        }
+                        document.getElementById('repo-name').focus();
                     }, 300);
                 },
                 
@@ -758,33 +727,15 @@ const dashboardTemplate = `
                     this.createSuccess = false;
                     this.isCreating = false;
                     this.repoNameError = '';
-                    // Don't clear credentials, keep them for next time
                 },
                 
-                saveCredentials() {
-                    if (!this.authUsername || !this.authPassword) {
-                        return;
+                handleLogout() {
+                    if (confirm('Are you sure you want to logout?')) {
+                        // Clear cookie
+                        document.cookie = 'refity_auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                        // Redirect to login
+                        window.location.href = '/login';
                     }
-                    this.credentials = btoa(this.authUsername + ':' + this.authPassword);
-                    // Clear password from memory
-                    this.authPassword = '';
-                    this.showPassword = false;
-                    // Focus on repo name input
-                    setTimeout(() => {
-                        document.getElementById('repo-name').focus();
-                    }, 100);
-                },
-                
-                togglePasswordVisibility() {
-                    this.showPassword = !this.showPassword;
-                    const passwordInput = document.getElementById('auth-password');
-                    if (passwordInput) {
-                        passwordInput.type = this.showPassword ? 'text' : 'password';
-                    }
-                },
-                
-                focusPassword() {
-                    document.getElementById('auth-password').focus();
                 },
                 
                 isValidRepoName() {
@@ -854,9 +805,11 @@ const dashboardTemplate = `
                         return;
                     }
 
-                    if (!this.credentials) {
-                        this.createMessage = 'Please provide authentication credentials first';
+                    const credentials = this.getCredentials();
+                    if (!credentials) {
+                        this.createMessage = 'Please login first';
                         this.createSuccess = false;
+                        window.location.href = '/login';
                         return;
                     }
 
@@ -868,7 +821,7 @@ const dashboardTemplate = `
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'Authorization': 'Basic ' + this.credentials
+                                'Authorization': 'Basic ' + credentials
                             },
                             body: JSON.stringify({ name: this.newRepoName.trim() })
                         });
@@ -902,22 +855,18 @@ const dashboardTemplate = `
                         return;
                     }
 
-                    // Get credentials if not already set
-                    if (!this.credentials) {
-                        const username = prompt('Enter username:');
-                        const password = prompt('Enter password:');
-                        if (!username || !password) {
-                            alert('Authentication required');
-                            return;
-                        }
-                        this.credentials = btoa(username + ':' + password);
+                    const credentials = this.getCredentials();
+                    if (!credentials) {
+                        alert('Please login first');
+                        window.location.href = '/login';
+                        return;
                     }
 
                     try {
                         const response = await fetch('/api/repositories/' + encodeURIComponent(repoName), {
                             method: 'DELETE',
                             headers: {
-                                'Authorization': 'Basic ' + this.credentials
+                                'Authorization': 'Basic ' + credentials
                             }
                         });
 
@@ -937,22 +886,18 @@ const dashboardTemplate = `
                         return;
                     }
 
-                    // Get credentials if not already set
-                    if (!this.credentials) {
-                        const username = prompt('Enter username:');
-                        const password = prompt('Enter password:');
-                        if (!username || !password) {
-                            alert('Authentication required');
-                            return;
-                        }
-                        this.credentials = btoa(username + ':' + password);
+                    const credentials = this.getCredentials();
+                    if (!credentials) {
+                        alert('Please login first');
+                        window.location.href = '/login';
+                        return;
                     }
 
                     try {
                         const response = await fetch('/api/repositories/' + encodeURIComponent(repoName) + '/tags/' + encodeURIComponent(tagName), {
                             method: 'DELETE',
                             headers: {
-                                'Authorization': 'Basic ' + this.credentials
+                                'Authorization': 'Basic ' + credentials
                             }
                         });
 
@@ -972,6 +917,306 @@ const dashboardTemplate = `
                     setTimeout(() => {
                         window.location.reload();
                     }, 300);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
+`
+
+const loginTemplate = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Refity Docker Registry</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --shadow-md: 0 4px 6px rgba(0,0,0,0.1);
+            --shadow-lg: 0 10px 25px rgba(0,0,0,0.15);
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+            padding: 2rem;
+        }
+
+        .login-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: var(--shadow-lg);
+            padding: 3rem;
+            border: none;
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .login-icon {
+            width: 80px;
+            height: 80px;
+            background: var(--primary-gradient);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            font-size: 2.5rem;
+            color: white;
+            box-shadow: var(--shadow-md);
+        }
+
+        .login-title {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+        }
+
+        .login-subtitle {
+            color: #718096;
+            font-size: 0.95rem;
+        }
+
+        .form-label {
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-control {
+            border-radius: 10px;
+            border: 2px solid #e2e8f0;
+            padding: 0.75rem 1rem;
+            transition: all 0.2s ease;
+        }
+
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .input-group .btn {
+            border-radius: 0 10px 10px 0;
+            border-left: none;
+        }
+
+        .input-group .form-control {
+            border-right: none;
+        }
+
+        .input-group .form-control:focus + .btn {
+            border-color: #667eea;
+        }
+
+        .btn-login {
+            background: var(--primary-gradient);
+            border: none;
+            border-radius: 10px;
+            padding: 0.75rem;
+            font-weight: 600;
+            font-size: 1rem;
+            width: 100%;
+            box-shadow: var(--shadow-md);
+            transition: all 0.3s ease;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+            background: var(--primary-gradient);
+        }
+
+        .btn-login:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .alert {
+            border-radius: 10px;
+            border: none;
+            padding: 1rem;
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container fade-in" x-data="loginForm()" x-init="init()">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-icon">
+                    <i class="bi bi-shield-lock"></i>
+                </div>
+                <h1 class="login-title">Refity Registry</h1>
+                <p class="login-subtitle">Sign in to access your Docker registry</p>
+            </div>
+
+            <div x-show="errorMessage" 
+                 x-text="errorMessage" 
+                 class="alert alert-danger d-flex align-items-center mb-3"
+                 role="alert">
+                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+            </div>
+
+            <form @submit.prevent="handleLogin()">
+                <div class="mb-3">
+                    <label for="username" class="form-label">
+                        <i class="bi bi-person me-2"></i>Username
+                    </label>
+                    <input type="text" 
+                           id="username"
+                           x-model="username" 
+                           placeholder="Enter your username" 
+                           class="form-control"
+                           required
+                           autofocus
+                           :disabled="isLoading">
+                </div>
+
+                <div class="mb-4">
+                    <label for="password" class="form-label">
+                        <i class="bi bi-lock me-2"></i>Password
+                    </label>
+                    <div class="input-group">
+                        <input :type="showPassword ? 'text' : 'password'" 
+                               id="password"
+                               x-model="password" 
+                               placeholder="Enter your password" 
+                               class="form-control"
+                               required
+                               :disabled="isLoading"
+                               @keyup.enter="handleLogin()">
+                        <button class="btn btn-outline-secondary" 
+                                type="button" 
+                                @click="togglePasswordVisibility()"
+                                :disabled="isLoading"
+                                title="Toggle password visibility">
+                            <i :class="showPassword ? 'bi bi-eye-slash' : 'bi bi-eye'"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" 
+                        class="btn btn-login"
+                        :disabled="isLoading || !username || !password">
+                    <span x-show="!isLoading">
+                        <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
+                    </span>
+                    <span x-show="isLoading">
+                        <span class="loading me-2"></span>Signing in...
+                    </span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script>
+        function loginForm() {
+            return {
+                username: '',
+                password: '',
+                showPassword: false,
+                isLoading: false,
+                errorMessage: '',
+                
+                init() {
+                    // Check if already logged in
+                    if (this.getCookie('refity_auth')) {
+                        window.location.href = '/';
+                    }
+                },
+                
+                togglePasswordVisibility() {
+                    this.showPassword = !this.showPassword;
+                },
+                
+                getCookie(name) {
+                    const value = '; ' + document.cookie;
+                    const parts = value.split('; ' + name + '=');
+                    if (parts.length === 2) return parts.pop().split(';').shift();
+                    return null;
+                },
+                
+                async handleLogin() {
+                    if (!this.username || !this.password) {
+                        return;
+                    }
+
+                    this.isLoading = true;
+                    this.errorMessage = '';
+
+                    try {
+                        const response = await fetch('/api/login', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                username: this.username,
+                                password: this.password
+                            })
+                        });
+
+                        const result = await response.json();
+                        
+                        if (response.ok) {
+                            // Cookie is already set by server, just redirect
+                            window.location.href = '/';
+                        } else {
+                            this.errorMessage = result.message || 'Invalid username or password';
+                        }
+                    } catch (error) {
+                        this.errorMessage = 'Error connecting to server. Please try again.';
+                    } finally {
+                        this.isLoading = false;
+                    }
                 }
             }
         }
