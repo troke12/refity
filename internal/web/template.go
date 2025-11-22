@@ -304,10 +304,105 @@ const dashboardTemplate = `
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
+        .form-control.is-valid {
+            border-color: #38ef7d;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3e%3cpath fill='%2338ef7d' d='m2.3 6.73.98-.98-.98-.98-.98.98.98.98zm2.5-2.5.98-.98-.98-.98-.98.98.98.98z'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right calc(0.375em + 0.1875rem) center;
+            background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+        }
+
+        .form-control.is-invalid {
+            border-color: #f5576c;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' width='12' height='12' fill='none' stroke='%23f5576c'%3e%3ccircle cx='6' cy='6' r='4.5'/%3e%3cpath d='m5.8 3.6.4.4.4-.4m0 4.8-.4-.4-.4.4'/%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right calc(0.375em + 0.1875rem) center;
+            background-size: calc(0.75em + 0.375rem) calc(0.75em + 0.375rem);
+        }
+
+        .form-control.is-valid:focus {
+            border-color: #38ef7d;
+            box-shadow: 0 0 0 3px rgba(56, 239, 125, 0.1);
+        }
+
+        .form-control.is-invalid:focus {
+            border-color: #f5576c;
+            box-shadow: 0 0 0 3px rgba(245, 87, 108, 0.1);
+        }
+
         .form-label {
             font-weight: 600;
             color: #4a5568;
             margin-bottom: 0.5rem;
+        }
+
+        .form-text {
+            font-size: 0.875rem;
+            color: #718096;
+            margin-top: 0.5rem;
+        }
+
+        .form-text code {
+            background: #f7fafc;
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-size: 0.875em;
+            color: #667eea;
+        }
+
+        .invalid-feedback {
+            display: block;
+            width: 100%;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: #f5576c;
+        }
+
+        .valid-feedback {
+            display: block;
+            width: 100%;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+            color: #38ef7d;
+        }
+
+        .bg-light {
+            background-color: #f7fafc !important;
+            border: 1px solid #e2e8f0;
+        }
+
+        .alert {
+            border-radius: 10px;
+            border: none;
+            padding: 1rem;
+            margin-bottom: 0;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+
+        .input-group .btn {
+            border-radius: 0 10px 10px 0;
+            border-left: none;
+        }
+
+        .input-group .form-control {
+            border-right: none;
+        }
+
+        .input-group .form-control:focus {
+            border-right: none;
+        }
+
+        .input-group .form-control:focus + .btn {
+            border-color: #667eea;
         }
 
         .modal-footer {
@@ -507,7 +602,7 @@ const dashboardTemplate = `
 
     <!-- Create Repository Modal -->
     <div class="modal fade" id="createModal" tabindex="-1" aria-labelledby="createModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="createModalLabel">
@@ -516,32 +611,100 @@ const dashboardTemplate = `
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @click="hideCreateModal()"></button>
                 </div>
                 <div class="modal-body p-4">
+                    <!-- Authentication Section (if needed) -->
+                    <div x-show="!credentials" class="mb-4 p-3 bg-light rounded">
+                        <div class="d-flex align-items-center mb-3">
+                            <i class="bi bi-shield-lock text-primary me-2 fs-5"></i>
+                            <h6 class="mb-0 fw-bold">Authentication Required</h6>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="auth-username" class="form-label">Username</label>
+                                <input type="text" 
+                                       id="auth-username"
+                                       x-model="authUsername" 
+                                       placeholder="Enter username" 
+                                       class="form-control"
+                                       @keyup.enter="focusPassword()">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="auth-password" class="form-label">Password</label>
+                                <div class="input-group">
+                                    <input type="password" 
+                                           id="auth-password"
+                                           x-model="authPassword" 
+                                           placeholder="Enter password" 
+                                           class="form-control"
+                                           @keyup.enter="saveCredentials()">
+                                    <button class="btn btn-outline-secondary" 
+                                            type="button" 
+                                            @click="togglePasswordVisibility()"
+                                            title="Toggle password visibility">
+                                        <i :class="showPassword ? 'bi bi-eye-slash' : 'bi bi-eye'"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" 
+                                class="btn btn-primary btn-sm mt-2"
+                                @click="saveCredentials()"
+                                :disabled="!authUsername || !authPassword">
+                            <i class="bi bi-check-lg me-1"></i>Save Credentials
+                        </button>
+                    </div>
+
+                    <!-- Repository Name Section -->
                     <div class="mb-3">
-                        <label for="repo-name" class="form-label">Repository Name</label>
+                        <label for="repo-name" class="form-label fw-bold">
+                            <i class="bi bi-folder me-2"></i>Repository Name
+                        </label>
                         <input type="text" 
                                id="repo-name"
                                x-model="newRepoName" 
-                               placeholder="Enter repository name (e.g., myapp)" 
+                               placeholder="e.g., myapp, frontend-app, backend-service" 
                                class="form-control"
+                               :class="{'is-invalid': repoNameError, 'is-valid': newRepoName && !repoNameError && isValidRepoName()}"
+                               @input="validateRepoName()"
                                @keyup.enter="createRepository()"
+                               :disabled="!credentials || isCreating"
                                autofocus>
-                        <div x-show="createMessage" 
-                             x-text="createMessage" 
-                             :class="createSuccess ? 'text-success mt-2' : 'text-danger mt-2'" 
-                             class="d-flex align-items-center">
-                            <i x-show="createSuccess" class="bi bi-check-circle me-2"></i>
-                            <i x-show="!createSuccess && createMessage" class="bi bi-exclamation-circle me-2"></i>
+                        <div class="form-text">
+                            <i class="bi bi-info-circle me-1"></i>
+                            Repository name should contain only lowercase letters, numbers, hyphens, underscores, and forward slashes (for groups).
+                            <br>
+                            <strong>Examples:</strong> <code>myapp</code>, <code>frontend-app</code>, <code>group/myapp</code>
                         </div>
+                        <div x-show="repoNameError" 
+                             x-text="repoNameError" 
+                             class="invalid-feedback d-block">
+                        </div>
+                        <div x-show="newRepoName && !repoNameError && isValidRepoName()" 
+                             class="valid-feedback d-block">
+                            <i class="bi bi-check-circle me-1"></i>Valid repository name
+                        </div>
+                    </div>
+
+                    <!-- Success/Error Message -->
+                    <div x-show="createMessage" 
+                         :class="createSuccess ? 'alert alert-success' : 'alert alert-danger'" 
+                         class="d-flex align-items-center"
+                         role="alert">
+                        <i :class="createSuccess ? 'bi bi-check-circle-fill me-2' : 'bi bi-exclamation-triangle-fill me-2'"></i>
+                        <span x-text="createMessage"></span>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" @click="hideCreateModal()">
-                        Cancel
+                    <button type="button" 
+                            class="btn btn-secondary" 
+                            data-bs-dismiss="modal" 
+                            @click="hideCreateModal()"
+                            :disabled="isCreating">
+                        <i class="bi bi-x-lg me-1"></i>Cancel
                     </button>
                     <button type="button" 
                             class="btn btn-primary" 
                             @click="createRepository()"
-                            :disabled="isCreating">
+                            :disabled="isCreating || !credentials || !isValidRepoName() || !newRepoName.trim()">
                         <span x-show="!isCreating">
                             <i class="bi bi-check-lg me-2"></i>Create Repository
                         </span>
@@ -566,6 +729,10 @@ const dashboardTemplate = `
                 modal: null,
                 isCreating: false,
                 isRefreshing: false,
+                authUsername: '',
+                authPassword: '',
+                showPassword: false,
+                repoNameError: '',
                 
                 init() {
                     // Initialize Bootstrap modal
@@ -576,7 +743,11 @@ const dashboardTemplate = `
                     this.modal.show();
                     // Focus input after modal is shown
                     setTimeout(() => {
-                        document.getElementById('repo-name').focus();
+                        if (this.credentials) {
+                            document.getElementById('repo-name').focus();
+                        } else {
+                            document.getElementById('auth-username').focus();
+                        }
                     }, 300);
                 },
                 
@@ -586,6 +757,88 @@ const dashboardTemplate = `
                     this.createMessage = '';
                     this.createSuccess = false;
                     this.isCreating = false;
+                    this.repoNameError = '';
+                    // Don't clear credentials, keep them for next time
+                },
+                
+                saveCredentials() {
+                    if (!this.authUsername || !this.authPassword) {
+                        return;
+                    }
+                    this.credentials = btoa(this.authUsername + ':' + this.authPassword);
+                    // Clear password from memory
+                    this.authPassword = '';
+                    this.showPassword = false;
+                    // Focus on repo name input
+                    setTimeout(() => {
+                        document.getElementById('repo-name').focus();
+                    }, 100);
+                },
+                
+                togglePasswordVisibility() {
+                    this.showPassword = !this.showPassword;
+                    const passwordInput = document.getElementById('auth-password');
+                    if (passwordInput) {
+                        passwordInput.type = this.showPassword ? 'text' : 'password';
+                    }
+                },
+                
+                focusPassword() {
+                    document.getElementById('auth-password').focus();
+                },
+                
+                isValidRepoName() {
+                    if (!this.newRepoName.trim()) {
+                        return false;
+                    }
+                    // Docker repository name validation: lowercase, alphanumeric, hyphens, underscores, forward slashes
+                    const repoNameRegex = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$/;
+                    return repoNameRegex.test(this.newRepoName.trim());
+                },
+                
+                validateRepoName() {
+                    const name = this.newRepoName.trim();
+                    
+                    if (!name) {
+                        this.repoNameError = '';
+                        return;
+                    }
+                    
+                    if (name.length < 2) {
+                        this.repoNameError = 'Repository name must be at least 2 characters long';
+                        return;
+                    }
+                    
+                    if (name.length > 255) {
+                        this.repoNameError = 'Repository name must be less than 255 characters';
+                        return;
+                    }
+                    
+                    // Check for invalid characters
+                    if (!/^[a-z0-9._\-\/]+$/.test(name)) {
+                        this.repoNameError = 'Repository name can only contain lowercase letters, numbers, dots, hyphens, underscores, and forward slashes';
+                        return;
+                    }
+                    
+                    // Check for consecutive special characters
+                    if (/[._\-\/]{2,}/.test(name)) {
+                        this.repoNameError = 'Repository name cannot contain consecutive special characters';
+                        return;
+                    }
+                    
+                    // Check for starting/ending with special characters
+                    if (/^[._\-\/]|[._\-\/]$/.test(name)) {
+                        this.repoNameError = 'Repository name cannot start or end with special characters';
+                        return;
+                    }
+                    
+                    // Check for double slashes
+                    if (name.includes('//')) {
+                        this.repoNameError = 'Repository name cannot contain consecutive slashes';
+                        return;
+                    }
+                    
+                    this.repoNameError = '';
                 },
                 
                 async createRepository() {
@@ -594,22 +847,21 @@ const dashboardTemplate = `
                         this.createSuccess = false;
                         return;
                     }
+                    
+                    if (!this.isValidRepoName()) {
+                        this.createMessage = 'Please enter a valid repository name';
+                        this.createSuccess = false;
+                        return;
+                    }
+
+                    if (!this.credentials) {
+                        this.createMessage = 'Please provide authentication credentials first';
+                        this.createSuccess = false;
+                        return;
+                    }
 
                     this.isCreating = true;
                     this.createMessage = '';
-
-                    // Get credentials if not already set
-                    if (!this.credentials) {
-                        const username = prompt('Enter username:');
-                        const password = prompt('Enter password:');
-                        if (!username || !password) {
-                            this.createMessage = 'Authentication required';
-                            this.createSuccess = false;
-                            this.isCreating = false;
-                            return;
-                        }
-                        this.credentials = btoa(username + ':' + password);
-                    }
 
                     try {
                         const response = await fetch('/api/repositories', {
@@ -627,6 +879,7 @@ const dashboardTemplate = `
                             this.createMessage = result.message || 'Repository created successfully!';
                             this.createSuccess = true;
                             this.newRepoName = '';
+                            this.repoNameError = '';
                             setTimeout(() => {
                                 this.createMessage = '';
                                 this.hideCreateModal();
