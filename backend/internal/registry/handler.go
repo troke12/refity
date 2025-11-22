@@ -87,6 +87,13 @@ func initiateBlobUpload(w http.ResponseWriter, _ *http.Request, path string) {
 				// Continue anyway, the upload might still work
 			} else {
 				log.Printf("initiateBlobUpload: auto-created repository %s", name)
+				// Also create SFTP folder structure
+				if sftpDriver != nil {
+					if err := sftpDriver.CreateRepositoryFolder(context.TODO(), name); err != nil {
+						log.Printf("initiateBlobUpload: failed to create SFTP folder for %s: %v", name, err)
+						// Continue anyway, folder will be created when needed
+					}
+				}
 			}
 		}
 	}
@@ -161,6 +168,13 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 					// Continue anyway, the upload might still work
 				} else {
 					log.Printf("handleManifest: auto-created repository %s", name)
+					// Also create SFTP folder structure
+					if sftpDriver != nil {
+						if err := sftpDriver.CreateRepositoryFolder(context.TODO(), name); err != nil {
+							log.Printf("handleManifest: failed to create SFTP folder for %s: %v", name, err)
+							// Continue anyway, folder will be created when needed
+						}
+					}
 				}
 			}
 		}
@@ -314,6 +328,13 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 				// Continue anyway, the upload might still work
 			} else {
 				log.Printf("commitBlobUpload: auto-created repository %s", name)
+				// Also create SFTP folder structure
+				if sftpDriver != nil {
+					if err := sftpDriver.CreateRepositoryFolder(context.TODO(), name); err != nil {
+						log.Printf("commitBlobUpload: failed to create SFTP folder for %s: %v", name, err)
+						// Continue anyway, folder will be created when needed
+					}
+				}
 			}
 		}
 	}
