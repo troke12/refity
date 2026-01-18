@@ -296,6 +296,18 @@ func (d *Database) GetImage(name, tag string) (*Image, error) {
 	return &img, nil
 }
 
+func (d *Database) GetImageByDigest(digest string) (*Image, error) {
+	var img Image
+	err := d.db.QueryRow(`
+		SELECT id, name, tag, digest, size, created_at
+		FROM images WHERE digest = ?
+	`, digest).Scan(&img.ID, &img.Name, &img.Tag, &img.Digest, &img.Size, &img.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &img, nil
+}
+
 func (d *Database) GetAllImages() ([]*Image, error) {
 	rows, err := d.db.Query(`
 		SELECT id, name, tag, digest, size, created_at

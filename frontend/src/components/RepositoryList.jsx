@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { repositoriesAPI } from '../services/api';
 import { formatBytes } from '../utils/formatBytes';
+import { formatDate } from '../utils/formatDate';
 import './RepositoryList.css';
 
 function RepositoryList({ repositories, onRepositoryDeleted, onTagDeleted }) {
@@ -65,6 +66,11 @@ function RepositoryList({ repositories, onRepositoryDeleted, onTagDeleted }) {
                             <i className="bi bi-tag"></i>
                             <span>{tag.name}</span>
                             <small>({formatBytes(tag.size)})</small>
+                            {tag.created_at && (
+                              <small className="ms-1 text-muted" title={formatDate(tag.created_at)}>
+                                <i className="bi bi-calendar3"></i>
+                              </small>
+                            )}
                             <button
                               onClick={() => handleDeleteTag(repo.name, tag.name)}
                               className="tag-close"

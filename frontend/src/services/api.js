@@ -82,6 +82,32 @@ export const dashboardAPI = {
   },
 };
 
+export const ftpAPI = {
+  getUsage: async () => {
+    try {
+      const response = await api.get('/api/ftp/usage');
+      // Check if response has error field
+      if (response.data && response.data.error) {
+        throw new Error(response.data.error);
+      }
+      return response.data;
+    } catch (error) {
+      // Re-throw with more context
+      if (error.response) {
+        // Server responded with error status
+        const errorMsg = error.response.data?.error || error.response.statusText || 'Unknown error';
+        throw new Error(`FTP Usage API error: ${errorMsg} (Status: ${error.response.status})`);
+      } else if (error.request) {
+        // Request made but no response
+        throw new Error('FTP Usage API: No response from server');
+      } else {
+        // Something else happened
+        throw error;
+      }
+    }
+  },
+};
+
 export const groupsAPI = {
   getAll: async () => {
     const response = await api.get('/api/groups');

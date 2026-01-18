@@ -6,6 +6,7 @@ import (
 	"refity/backend/internal/driver/sftp"
 	"refity/backend/internal/database"
 	"refity/backend/internal/auth"
+	"refity/backend/internal/config"
 )
 
 type APIRouter struct {
@@ -13,9 +14,9 @@ type APIRouter struct {
 	authHandler *AuthHandler
 }
 
-func NewAPIRouter(sftpDriver sftp.StorageDriver, db *database.Database) *APIRouter {
+func NewAPIRouter(sftpDriver sftp.StorageDriver, db *database.Database, cfg *config.Config) *APIRouter {
 	return &APIRouter{
-		apiHandler:  NewAPIHandler(sftpDriver, db),
+		apiHandler:  NewAPIHandler(sftpDriver, db, cfg),
 		authHandler: NewAuthHandler(db),
 	}
 }
@@ -42,6 +43,11 @@ func (r *APIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	if path == "/api/dashboard" && req.Method == http.MethodGet {
 		auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.DashboardHandler)).ServeHTTP(w, req)
+		return
+	}
+
+	if path == "/api/ftp/usage" && req.Method == http.MethodGet {
+		auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.FTPUsageHandler)).ServeHTTP(w, req)
 		return
 	}
 

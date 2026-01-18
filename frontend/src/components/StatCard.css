@@ -1,105 +1,113 @@
+/* Docker Hub Style Stat Cards */
 .stat-card {
-  border: none;
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--docker-border);
+  border-radius: 0;
+  box-shadow: none;
   transition: var(--transition);
   overflow: hidden;
   position: relative;
   background: white;
-  border: 1px solid #e2e8f0;
-  padding: 1.5rem;
-}
-
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: var(--primary-gradient);
-  transform: scaleX(0);
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+  height: 100%;
 }
 
 .stat-card:hover {
-  transform: translateY(-6px);
-  box-shadow: var(--shadow-lg);
-  border-color: #cbd5e0;
+  border-color: var(--docker-blue-light);
+  box-shadow: var(--shadow-sm);
 }
 
-.stat-card:hover::before {
-  transform: scaleX(1);
+.stat-card .card-body {
+  padding: 0.875rem 0.875rem;
 }
 
-.stat-card.primary::before {
-  background: var(--primary-gradient);
-}
-
-.stat-card.success::before {
-  background: var(--success-gradient);
-}
-
-.stat-card.warning::before {
-  background: var(--warning-gradient);
+.stat-card .d-flex {
+  align-items: center;
 }
 
 .stat-icon {
-  width: 64px;
-  height: 64px;
-  border-radius: var(--border-radius-sm);
+  width: 40px;
+  height: 40px;
+  border-radius: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.75rem;
-  background: var(--primary-gradient);
-  color: white;
-  box-shadow: var(--shadow-sm);
-  margin-bottom: 1rem;
-  transition: var(--transition);
+  font-size: 1.25rem;
+  background: var(--docker-blue-light);
+  color: var(--docker-blue);
+  margin-right: 0.625rem;
+  flex-shrink: 0;
 }
 
-.stat-card:hover .stat-icon {
-  transform: scale(1.1) rotate(5deg);
+.stat-card.primary .stat-icon {
+  background: #E6F2FF;
+  color: var(--docker-blue);
 }
 
-.stat-icon.success {
-  background: var(--success-gradient);
+.stat-card.success .stat-icon {
+  background: #E8F5E9;
+  color: var(--docker-success);
 }
 
-.stat-icon.warning {
-  background: var(--warning-gradient);
+.stat-card.warning .stat-icon {
+  background: #FFF8E1;
+  color: #F57C00;
 }
 
 .stat-value {
-  font-size: 2.25rem;
-  font-weight: 700;
-  color: #1a202c;
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--docker-text);
   margin: 0;
   line-height: 1.2;
-  background: linear-gradient(135deg, #1a202c 0%, #4a5568 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  white-space: nowrap;
+}
+
+.stat-value.compact-value {
+  font-size: 1.25rem;
+}
+
+/* Compact card styling */
+.stat-card.compact .card-body {
+  padding: 0.75rem 0.875rem;
+}
+
+.stat-card.compact .stat-icon {
+  width: 32px;
+  height: 32px;
+  font-size: 1rem;
+  margin-right: 0.5rem;
+}
+
+.stat-card.compact .stat-label {
+  font-size: 0.7rem;
+  margin-top: 0.125rem;
+}
+
+.stat-card.compact .stat-value {
+  font-size: 1.25rem;
 }
 
 .stat-label {
-  font-size: 0.875rem;
-  color: #718096;
-  font-weight: 600;
+  font-size: 0.7rem;
+  color: var(--docker-text-light);
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-top: 0.5rem;
+  letter-spacing: 0.3px;
+  margin-top: 0.25rem;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .fade-in {
-  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: fadeIn 0.3s ease-in;
 }
 
 @keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -107,3 +115,40 @@
   }
 }
 
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .stat-card .card-body {
+    padding: 1rem;
+  }
+
+  .stat-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 1.25rem;
+    margin-right: 0.75rem;
+  }
+
+  .stat-value {
+    font-size: 1.5rem;
+  }
+
+  .stat-label {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .stat-card .card-body {
+    padding: 0.875rem;
+  }
+
+  .stat-icon {
+    width: 36px;
+    height: 36px;
+    font-size: 1.125rem;
+  }
+
+  .stat-value {
+    font-size: 1.25rem;
+  }
+}

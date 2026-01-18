@@ -1,28 +1,42 @@
+/* Docker Hub Style Repository List */
 .repo-card {
-  border: none;
-  border-radius: 16px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  border: 1px solid var(--docker-border);
+  border-radius: 0;
+  box-shadow: none;
   overflow: hidden;
   background: white;
+  margin-bottom: var(--spacing-md);
+}
+
+.repo-card:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--docker-blue-light);
 }
 
 .repo-card-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 1.5rem;
-  border: none;
+  background: white;
+  color: var(--docker-text);
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--docker-border);
 }
 
 .repo-card-header h5 {
-  font-weight: 700;
+  font-weight: 600;
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.125rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.repo-card-header h5 i {
+  color: var(--docker-blue);
 }
 
 .repo-item {
-  padding: 1.5rem;
-  border-bottom: 1px solid #e2e8f0;
-  transition: all 0.2s ease;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--docker-border);
+  transition: var(--transition);
   background: white;
 }
 
@@ -31,14 +45,13 @@
 }
 
 .repo-item:hover {
-  background: #f7fafc;
-  padding-left: 2rem;
+  background: var(--docker-gray-light);
 }
 
 .repo-name {
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--docker-text);
   margin-bottom: 0.75rem;
   display: flex;
   align-items: center;
@@ -46,48 +59,69 @@
 }
 
 .repo-name i {
-  color: #667eea;
+  color: var(--docker-blue);
+  font-size: 1.125rem;
 }
 
 .tag-badge {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
-  font-size: 0.875rem;
+  background: var(--docker-blue-light);
+  color: var(--docker-blue);
+  padding: 0.375rem 0.75rem;
+  border-radius: 0;
+  font-size: 0.8125rem;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  margin: 0.25rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-  transition: all 0.2s ease;
+  gap: 0.375rem;
+  margin: 0.25rem 0.25rem 0.25rem 0;
+  border: 1px solid var(--docker-blue-light);
+  transition: var(--transition);
 }
 
 .tag-badge:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  background: var(--docker-blue);
+  color: white;
+  border-color: var(--docker-blue);
+}
+
+.tag-badge i {
+  font-size: 0.75rem;
+}
+
+.tag-badge small {
+  color: var(--docker-text-light);
+  font-size: 0.75rem;
+  margin-left: 0.25rem;
+}
+
+.tag-badge:hover small {
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .tag-close {
-  background: rgba(255,255,255,0.3);
-  border-radius: 50%;
+  background: transparent;
+  border-radius: 0;
   width: 18px;
   height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: var(--transition);
   font-size: 0.7rem;
   padding: 0;
   border: none;
+  color: var(--docker-text-light);
+  margin-left: 0.375rem;
+}
+
+.tag-badge:hover .tag-close {
   color: white;
 }
 
 .tag-close:hover:not(:disabled) {
-  background: rgba(255,255,255,0.5);
-  transform: scale(1.1);
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
 }
 
 .tag-close:disabled {
@@ -96,36 +130,44 @@
 }
 
 .btn-delete {
-  border-radius: 8px;
+  border-radius: 0;
   padding: 0.5rem 1rem;
   font-weight: 500;
-  transition: all 0.2s ease;
+  font-size: 0.8125rem;
+  transition: var(--transition);
+  border: 1px solid var(--docker-border);
+  background: white;
+  color: var(--docker-danger);
 }
 
 .btn-delete:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background: var(--docker-danger);
+  color: white;
+  border-color: var(--docker-danger);
+  transform: none;
 }
 
 .empty-state {
-  padding: 4rem 2rem;
+  padding: var(--spacing-xl) var(--spacing-md);
   text-align: center;
 }
 
 .empty-state i {
-  font-size: 5rem;
-  color: #cbd5e0;
-  margin-bottom: 1rem;
+  font-size: 3rem;
+  color: var(--docker-border);
+  margin-bottom: var(--spacing-md);
 }
 
 .empty-state h5 {
-  color: #4a5568;
+  color: var(--docker-text);
   font-weight: 600;
   margin-bottom: 0.5rem;
+  font-size: 1rem;
 }
 
 .empty-state p {
-  color: #718096;
+  color: var(--docker-text-light);
+  font-size: 0.875rem;
 }
 
 .fade-in {
@@ -143,3 +185,62 @@
   }
 }
 
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .repo-card-header {
+    padding: 1rem;
+  }
+
+  .repo-card-header h5 {
+    font-size: 1rem;
+  }
+
+  .repo-item {
+    padding: 1rem;
+  }
+
+  .repo-name {
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .tag-badge {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.75rem;
+    margin: 0.2rem 0.2rem 0.2rem 0;
+  }
+
+  .empty-state {
+    padding: var(--spacing-lg) var(--spacing-sm);
+  }
+
+  .empty-state i {
+    font-size: 2rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .repo-item {
+    padding: 0.875rem;
+  }
+
+  .repo-name {
+    font-size: 0.9rem;
+    flex-wrap: wrap;
+  }
+
+  .tag-badge {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    margin: 0.15rem 0.15rem 0.15rem 0;
+  }
+
+  .tag-badge small {
+    display: none;
+  }
+
+  .btn-delete {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+  }
+}

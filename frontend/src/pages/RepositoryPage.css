@@ -1,29 +1,137 @@
-/* Repository page specific styles */
+/* Docker Hub Style Repository Page */
+.container-main {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #FFFFFF;
+}
+
+/* Content Area */
+.container-main > .container-fluid {
+  max-width: var(--container-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--container-padding);
+}
+
+/* Card Header Navigation */
+.card-header-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.card-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-link-back {
+  color: var(--docker-blue);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 0;
+  transition: var(--transition);
+  border: 1px solid var(--docker-border);
+  background: white;
+}
+
+.nav-link-back:hover {
+  background: var(--docker-blue-light);
+  border-color: var(--docker-blue);
+  color: var(--docker-blue-dark);
+}
+
+.nav-link-back i {
+  font-size: 1rem;
+}
+
+/* Cards */
+.card {
+  border: 1px solid var(--docker-border);
+  border-radius: 0;
+  box-shadow: none;
+  transition: var(--transition);
+  background: white;
+  overflow: hidden;
+  margin-bottom: var(--spacing-md);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--docker-blue-light);
+}
+
+.card-header {
+  background: white;
+  border-bottom: 1px solid var(--docker-border);
+  padding: 1.25rem 1.5rem;
+}
+
+.card-header h5 {
+  font-weight: 600;
+  color: var(--docker-text);
+  font-size: 1.125rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card-header h5 i {
+  color: var(--docker-blue);
+  font-size: 1.25rem;
+}
+
+.card-header small {
+  color: var(--docker-text-light);
+  font-size: 0.875rem;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.card-body {
+  padding: 1.5rem;
+}
+
+/* Table - Docker Hub Style */
 .table {
   background: white;
-  border-radius: var(--border-radius);
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
+  width: 100%;
+  border: 1px solid var(--docker-border);
+  border-collapse: collapse;
 }
 
 .table thead {
-  background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
+  background: var(--docker-gray-light);
 }
 
 .table thead th {
-  border-bottom: 2px solid #e2e8f0;
+  border-bottom: 2px solid var(--docker-border);
   font-weight: 600;
-  color: #1a202c;
-  padding: 1rem;
+  color: var(--docker-text);
+  padding: 0.875rem 1rem;
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .table tbody td {
   padding: 1rem;
-  border-bottom: 1px solid #f1f5f9;
-  color: #4a5568;
+  border-bottom: 1px solid var(--docker-border);
+  color: var(--docker-text);
   vertical-align: middle;
 }
 
@@ -32,36 +140,113 @@
 }
 
 .table-hover tbody tr:hover {
-  background-color: #f8fafc;
-  transform: scale(1.01);
+  background-color: var(--docker-gray-light);
 }
 
 .table tbody tr:last-child td {
   border-bottom: none;
 }
 
+/* Badge - Docker Hub Style */
 .badge {
-  padding: 0.375rem 0.75rem;
-  border-radius: var(--border-radius-sm);
+  padding: 0.25rem 0.625rem;
+  border-radius: 0;
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
+  background: var(--docker-blue);
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
+.badge i {
+  font-size: 0.75rem;
+}
+
+/* Buttons */
 .btn-sm {
-  border-radius: var(--border-radius-sm);
+  border-radius: 0;
   padding: 0.375rem 0.75rem;
   font-weight: 500;
+  font-size: 0.8125rem;
   transition: var(--transition);
 }
 
 .btn-danger {
-  background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);
+  background: var(--docker-danger);
   border: none;
   color: white;
 }
 
 .btn-danger:hover {
-  transform: translateY(-1px);
+  background: #C82333;
+  color: white;
+  transform: none;
   box-shadow: var(--shadow-sm);
 }
 
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .container-main > .container-fluid {
+    padding: var(--container-padding-mobile);
+  }
+
+  .card-header,
+  .card-body {
+    padding: 1rem;
+  }
+
+  .card-header h5 {
+    font-size: 1rem;
+  }
+
+  .nav-link-back {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+  }
+
+  .nav-link-back i {
+    font-size: 0.875rem;
+  }
+
+  .table {
+    font-size: 0.875rem;
+  }
+
+  .table thead th {
+    padding: 0.75rem 0.5rem;
+    font-size: 0.7rem;
+  }
+
+  .table tbody td {
+    padding: 0.75rem 0.5rem;
+  }
+
+  .table-responsive {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 576px) {
+  .card-header-title {
+    gap: 0.5rem;
+  }
+
+  .card-header h5 {
+    font-size: 0.9375rem;
+  }
+
+  .table thead th,
+  .table tbody td {
+    padding: 0.5rem 0.25rem;
+    font-size: 0.75rem;
+  }
+
+  .badge {
+    padding: 0.2rem 0.5rem;
+    font-size: 0.75rem;
+  }
+}

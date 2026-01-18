@@ -1,18 +1,31 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Link } from 'react-router-dom';
-import { dashboardAPI, authAPI } from '../services/api';
+import { dashboardAPI, ftpAPI } from '../services/api';
 import { formatBytes } from '../utils/formatBytes';
+import { formatTB } from '../utils/formatTB';
+
+// Helper to format FTP usage - show GB for used, TB for total
+const formatFTPUsage = (usedBytes, totalTB) => {
+  if (!usedBytes && usedBytes !== 0) return 'N/A';
+  
+  // Convert bytes to GB for used size
+  const usedGB = usedBytes / (1024 * 1024 * 1024);
+  
+  // Format: "16.39 GB / 1.00 TB"
+  return `${usedGB.toFixed(2)} GB / ${formatTB(totalTB)}`;
+};
 import StatCard from '../components/StatCard';
 import CreateGroupModal from '../components/CreateGroupModal';
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
 import './Dashboard.css';
 
 function Dashboard() {
   const [data, setData] = useState(null);
+  const [ftpUsage, setFtpUsage] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
-  const navigate = useNavigate();
 
   const loadData = async () => {
     try {
@@ -26,20 +39,36 @@ function Dashboard() {
     }
   };
 
+  const loadFTPUsage = async () => {
+    try {
+      const usage = await ftpAPI.getUsage();
+      if (usage && usage.error) {
+        setFtpUsage(null);
+      } else {
+        setFtpUsage(usage);
+      }
+    } catch (error) {
+      setFtpUsage(null);
+    }
+  };
+
   useEffect(() => {
     loadData();
+    loadFTPUsage();
+    
+    // Poll FTP usage every 2 minutes (backend cache is 5 minutes, so this is safe)
+    const ftpInterval = setInterval(() => {
+      loadFTPUsage();
+    }, 2 * 60 * 1000); // 2 minutes
+    
+    return () => {
+      clearInterval(ftpInterval);
+    };
   }, []);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
     loadData();
-  };
-
-  const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      await authAPI.logout();
-      navigate('/login');
-    }
   };
 
   const handleGroupCreated = () => {
@@ -60,80 +89,70 @@ function Dashboard() {
 
   return (
     <div className="container-main">
-      <nav className="navbar navbar-expand-lg navbar-dark mb-4">
-        <div className="container-fluid">
-          <span className="navbar-brand">
-            <i className="bi bi-box-seam me-2"></i>Refity Docker Registry
-          </span>
-          <div className="navbar-nav ms-auto d-flex flex-row gap-2">
-            <button
-              onClick={handleRefresh}
-              className="btn btn-outline-light"
-              disabled={isRefreshing}
-            >
-              {isRefreshing ? (
-                <span className="spinner-border spinner-border-sm me-2"></span>
-              ) : (
-                <i className="bi bi-arrow-clockwise me-1"></i>
-              )}
-              Refresh
-            </button>
-            <button onClick={handleLogout} className="btn btn-outline-light">
-              <i className="bi bi-box-arrow-right me-1"></i>Logout
-            </button>
-          </div>
-        </div>
-      </nav>
+      <Navbar onRefresh={handleRefresh} isRefreshing={isRefreshing} />
 
       <div className="container-fluid px-0">
-        <div className="row mb-4 g-3">
-          <div className="col-md-4">
-            <StatCard
-              icon="bi-images"
-              label="Total Images"
-              value={data?.total_images || 0}
-              gradient="primary"
-            />
+        <div className="stats-section">
+          <div className="row g-3">
+            <div className="col-md-2 col-sm-6">
+              <StatCard
+                icon="bi-images"
+                label="Total Images"
+                value={data?.total_images || 0}
+                gradient="primary"
+              />
+            </div>
+            <div className="col-md-2 col-sm-6">
+              <StatCard
+                icon="bi-folder"
+                label="Total Groups"
+                value={data?.groups?.length || 0}
+                gradient="success"
+              />
+            </div>
+            <div className="col-md-3 col-sm-6">
+              <StatCard
+                icon="bi-hdd"
+                label="Total Size"
+                value={formatBytes(data?.total_size || 0)}
+                gradient="warning"
+              />
+            </div>
+            <div className="col-md-5 col-sm-6">
+              <StatCard
+                icon="bi-server"
+                label="FTP Usage"
+                value={ftpUsage ? `${formatBytes(ftpUsage.used_size)} / ${formatTB(ftpUsage.total_size_tb)}` : 'N/A'}
+                gradient="primary"
+              />
+            </div>
           </div>
-          <div className="col-md-4">
-            <StatCard
-              icon="bi-folder"
-              label="Total Groups"
-              value={data?.groups?.length || 0}
-              gradient="success"
-            />
-          </div>
-          <div className="col-md-4">
-            <StatCard
-              icon="bi-hdd"
-              label="Total Size"
-              value={formatBytes(data?.total_size || 0)}
-              gradient="warning"
-            />
-          </div>
-        </div>
-
-        <div className="mb-4">
-          <button
-            onClick={() => setShowCreateGroupModal(true)}
-            className="btn btn-primary"
-          >
-            <i className="bi bi-plus-circle me-2"></i>Create New Group
-          </button>
         </div>
 
         <div className="card">
           <div className="card-header">
-            <h5 className="mb-0">
-              <i className="bi bi-folder me-2"></i>Groups
-            </h5>
-            <small className="text-muted">List of all groups and their repositories</small>
+            <div className="card-header-title-wrapper">
+              <div>
+                <h5>
+                  <i className="bi bi-folder"></i>
+                  Groups
+                </h5>
+                <small>List of all groups and their repositories</small>
+              </div>
+              <button
+                onClick={() => setShowCreateGroupModal(true)}
+                className="btn-create-group-icon"
+                title="Create New Group"
+              >
+                <i className="bi bi-plus-circle-fill"></i>
+              </button>
+            </div>
           </div>
           <div className="card-body">
             {data?.groups && data.groups.length > 0 ? (
-              <div className="row g-3">
+              <div className="row g-2">
                 {data.groups.map((group) => (
-                  <div key={group.name} className="col-md-4">
+                  <div key={group.name} className="col-md-3 col-sm-6">
                     <Link
                       to={`/group/${encodeURIComponent(group.name)}`}
                       className="text-decoration-none"
@@ -141,12 +160,12 @@ function Dashboard() {
                       <div className="card h-100 group-card">
                         <div className="card-body">
                           <h6 className="card-title">
-                            <i className="bi bi-folder-fill me-2 text-primary"></i>
+                            <i className="bi bi-folder-fill"></i>
                             {group.name}
                           </h6>
                           <p className="card-text text-muted mb-0">
-                            <i className="bi bi-box me-1"></i>
-                            {group.repositories} {group.repositories === 1 ? 'repository' : 'repositories'}
+                            <i className="bi bi-box"></i>
+                            {group.repositories} {group.repositories === 1 ? 'repo' : 'repos'}
                           </p>
                         </div>
                       </div>
@@ -169,6 +188,8 @@ function Dashboard() {
         onClose={() => setShowCreateGroupModal(false)}
         onCreated={handleGroupCreated}
       />
+      
+      <Footer />
     </div>
   );
 }

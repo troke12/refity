@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { groupsAPI, repositoriesAPI, authAPI } from '../services/api';
+import { useParams, Link } from 'react-router-dom';
+import { groupsAPI, repositoriesAPI } from '../services/api';
 import { formatBytes } from '../utils/formatBytes';
+import { formatDate } from '../utils/formatDate';
+import Navbar from '../components/Navbar';
+import Footer from '../components/Footer';
 import './RepositoryPage.css';
 
 function RepositoryPage() {
   const { groupName, repoName } = useParams();
-  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -34,12 +36,6 @@ function RepositoryPage() {
     loadData();
   };
 
-  const handleLogout = async () => {
-    if (window.confirm('Are you sure you want to logout?')) {
-      await authAPI.logout();
-      navigate('/login');
-    }
-  };
 
   const handleDeleteTag = async (tagName) => {
     if (!window.confirm(`Are you sure you want to delete tag "${tagName}"?`)) {
@@ -71,52 +67,23 @@ function RepositoryPage() {
 
   return (
     <div className="container-main">
-      <nav className="navbar navbar-expand-lg navbar-dark mb-4">
-        <div className="container-fluid">
-          <Link to="/" className="navbar-brand text-decoration-none">
-            <i className="bi bi-box-seam me-2"></i>Refity Docker Registry
-          </Link>
-          <div className="navbar-nav ms-auto d-flex flex-row gap-2">
-            <button
-              onClick={handleRefresh}
-              className="btn btn-outline-light"
-              disabled={isRefreshing}
-            >
-              {isRefreshing ? (
-                <span className="spinner-border spinner-border-sm me-2"></span>
-              ) : (
-                <i className="bi bi-arrow-clockwise me-1"></i>
-              )}
-              Refresh
-            </button>
-            <button onClick={handleLogout} className="btn btn-outline-light">
-              <i className="bi bi-box-arrow-right me-1"></i>Logout
-            </button>
-          </div>
-        </div>
-      </nav>
+      <Navbar onRefresh={handleRefresh} isRefreshing={isRefreshing} title={`${decodedGroup}/${decodedRepo}`} />
 
       <div className="container-fluid px-0">
-        <nav aria-label="breadcrumb" className="mb-4">
-          <ol className="breadcrumb">
-            <li className="breadcrumb-item">
-              <Link to="/">Dashboard</Link>
-            </li>
-            <li className="breadcrumb-item">
-              <Link to={`/group/${encodeURIComponent(decodedGroup)}`}>{decodedGroup}</Link>
-            </li>
-            <li className="breadcrumb-item active" aria-current="page">
-              {decodedRepo}
-            </li>
-          </ol>
-        </nav>
-
         <div className="card">
           <div className="card-header">
-            <h5 className="mb-0">
-              <i className="bi bi-box-seam me-2"></i>Repository: {decodedGroup}/{decodedRepo}
-            </h5>
-            <small className="text-muted">List of tags for this repository</small>
+            <div className="card-header-content">
+              <div className="card-header-title">
+                <Link to={`/group/${encodeURIComponent(decodedGroup)}`} className="nav-link-back">
+                  <i className="bi bi-arrow-left"></i>
+                </Link>
+                <h5>
+                  <i className="bi bi-box-seam"></i>
+                  {decodedGroup}/{decodedRepo}
+                </h5>
+              </div>
+              <small>List of tags for this repository</small>
+            </div>
           </div>
           <div className="card-body">
             {data?.tags && data.tags.length > 0 ? (
@@ -126,6 +93,7 @@ function RepositoryPage() {
                     <tr>
                       <th>Tag</th>
                       <th>Size</th>
+                      <th>Date Created</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -139,6 +107,12 @@ function RepositoryPage() {
                           </span>
                         </td>
                         <td>{formatBytes(tag.size)}</td>
+                        <td>
+                          <small className="text-muted">
+                            <i className="bi bi-calendar3 me-1"></i>
+                            {formatDate(tag.created_at)}
+                          </small>
+                        </td>
                         <td>
                           <button
                             onClick={() => handleDeleteTag(tag.name)}
@@ -159,6 +133,8 @@ function RepositoryPage() {
           </div>
         </div>
       </div>
+      
+      <Footer />
     </div>
   );
 }

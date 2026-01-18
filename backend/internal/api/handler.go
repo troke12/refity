@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,17 +10,21 @@ import (
 	"strings"
 	"refity/backend/internal/driver/sftp"
 	"refity/backend/internal/database"
+	"refity/backend/internal/config"
 	"log"
 	"sync"
 	"time"
 )
 
 type APIHandler struct {
-	sftpDriver sftp.StorageDriver
-	db         *database.Database
-	cache      map[string]cachedData
-	cacheMutex sync.RWMutex
-	lastUpdate time.Time
+	sftpDriver    sftp.StorageDriver
+	db            *database.Database
+	config        *config.Config
+	cache         map[string]cachedData
+	cacheMutex    sync.RWMutex
+	ftpUsageCache *cachedFTPUsage
+	ftpCacheMutex sync.RWMutex
+	lastUpdate    time.Time
 }
 
 type cachedData struct {
@@ -27,20 +32,30 @@ type cachedData struct {
 	timestamp time.Time
 }
 
-const cacheDuration = 30 * time.Second // Cache for 30 seconds
+type cachedFTPUsage struct {
+	data            FTPUsageResponse
+	timestamp       time.Time
+	rateLimitReset  time.Time // When rate limit resets
+	rateLimitRemain int       // Remaining requests
+}
 
-func NewAPIHandler(sftpDriver sftp.StorageDriver, db *database.Database) *APIHandler {
+const cacheDuration = 30 * time.Second // Cache for 30 seconds
+const ftpUsageCacheDuration = 5 * time.Minute // Cache FTP usage for 5 minutes (12 requests/hour max, safe for 3600/hour limit)
+
+func NewAPIHandler(sftpDriver sftp.StorageDriver, db *database.Database, cfg *config.Config) *APIHandler {
 	return &APIHandler{
 		sftpDriver: sftpDriver,
 		db:         db,
+		config:     cfg,
 		cache:      make(map[string]cachedData),
 		lastUpdate: time.Now(),
 	}
 }
 
 type Tag struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
+	Name      string    `json:"name"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Repository struct {
@@ -450,8 +465,9 @@ func (h *APIHandler) GetRepositoriesByGroupHandler(w http.ResponseWriter, r *htt
 		var totalSize int64
 		for _, img := range images {
 			tags = append(tags, Tag{
-				Name: img.Tag,
-				Size: img.Size,
+				Name:      img.Tag,
+				Size:      img.Size,
+				CreatedAt: img.CreatedAt,
 			})
 			totalSize += img.Size
 		}
@@ -517,8 +533,9 @@ func (h *APIHandler) GetTagsByRepositoryHandler(w http.ResponseWriter, r *http.R
 	var tags []Tag
 	for _, img := range images {
 		tags = append(tags, Tag{
-			Name: img.Tag,
-			Size: img.Size,
+			Name:      img.Tag,
+			Size:      img.Size,
+			CreatedAt: img.CreatedAt,
 		})
 	}
 
@@ -531,3 +548,254 @@ func (h *APIHandler) GetTagsByRepositoryHandler(w http.ResponseWriter, r *http.R
 	})
 }
 
+type FTPUsageResponse struct {
+	UsedSize     int64   `json:"used_size"`     // size_data in bytes
+	TotalSize    int64   `json:"total_size"`    // size in bytes
+	UsedSizeTB   float64 `json:"used_size_tb"`  // size_data in TB
+	TotalSizeTB  float64 `json:"total_size_tb"` // size in TB
+	UsagePercent float64 `json:"usage_percent"` // percentage used
+}
+
+func (h *APIHandler) FTPUsageHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check if Hetzner config is available
+	if h.config.HetznerToken == "" || h.config.HetznerBoxID == 0 {
+		log.Printf("Hetzner config not available - Token: %v, BoxID: %d", h.config.HetznerToken != "", h.config.HetznerBoxID)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Hetzner configuration not available",
+		})
+		return
+	}
+
+	// Check cache first
+	h.ftpCacheMutex.RLock()
+	if h.ftpUsageCache != nil && time.Since(h.ftpUsageCache.timestamp) < ftpUsageCacheDuration {
+		cached := h.ftpUsageCache
+		h.ftpCacheMutex.RUnlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Cache", "HIT")
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", cached.rateLimitRemain))
+		if !cached.rateLimitReset.IsZero() {
+			w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", cached.rateLimitReset.Unix()))
+		}
+		json.NewEncoder(w).Encode(cached.data)
+		return
+	}
+	h.ftpCacheMutex.RUnlock()
+
+	// Cache miss or expired, fetch from API
+
+	// Storage Boxes use a separate API endpoint, not the hcloud-go SDK
+	apiURL := fmt.Sprintf("https://api.hetzner.com/v1/storage_boxes/%d", h.config.HetznerBoxID)
+	log.Printf("Fetching storage box from: %s", apiURL)
+	
+	req, err := http.NewRequestWithContext(context.TODO(), "GET", apiURL, nil)
+	if err != nil {
+		log.Printf("Failed to create request: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": fmt.Sprintf("Failed to create request: %v", err),
+		})
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+h.config.HetznerToken)
+	req.Header.Set("Accept", "application/json")
+
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		log.Printf("Failed to get storage box from Hetzner API: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": fmt.Sprintf("Failed to fetch storage box: %v", err),
+		})
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read the full response body first
+	var bodyBuf bytes.Buffer
+	_, err = bodyBuf.ReadFrom(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read response body: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": fmt.Sprintf("Failed to read response: %v", err),
+		})
+		return
+	}
+	
+	bodyStr := bodyBuf.String()
+	log.Printf("Hetzner API response status: %d", resp.StatusCode)
+
+	// Parse rate limit headers before checking status
+	rateLimitRemain := 0
+	rateLimitReset := time.Time{}
+	if remainStr := resp.Header.Get("RateLimit-Remaining"); remainStr != "" {
+		fmt.Sscanf(remainStr, "%d", &rateLimitRemain)
+	}
+	if resetStr := resp.Header.Get("RateLimit-Reset"); resetStr != "" {
+		var resetUnix int64
+		if _, err := fmt.Sscanf(resetStr, "%d", &resetUnix); err == nil {
+			rateLimitReset = time.Unix(resetUnix, 0)
+		}
+	}
+	log.Printf("Rate limit status - Remaining: %d, Reset: %v", rateLimitRemain, rateLimitReset)
+
+	if resp.StatusCode == http.StatusTooManyRequests {
+		// Rate limit exceeded - return cached data if available, or error
+		log.Printf("Hetzner API rate limit exceeded (429)")
+		h.ftpCacheMutex.RLock()
+		if h.ftpUsageCache != nil {
+			cached := h.ftpUsageCache
+			h.ftpCacheMutex.RUnlock()
+			// Return cached data even if expired
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "STALE")
+			w.Header().Set("X-RateLimit-Exceeded", "true")
+			w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", rateLimitRemain))
+			if !rateLimitReset.IsZero() {
+				w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", rateLimitReset.Unix()))
+			}
+			json.NewEncoder(w).Encode(cached.data)
+			return
+		}
+		h.ftpCacheMutex.RUnlock()
+		
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": "Rate limit exceeded. Please try again later.",
+		})
+		return
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Hetzner API returned non-200 status: %d, response: %s", resp.StatusCode, bodyStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": fmt.Sprintf("Hetzner API error: status %d, response: %s", resp.StatusCode, bodyStr),
+		})
+		return
+	}
+
+
+	// Try to decode the response - handle different possible structures
+	var apiResponse map[string]interface{}
+	if err := json.Unmarshal(bodyBuf.Bytes(), &apiResponse); err != nil {
+		log.Printf("Failed to decode Hetzner API response as JSON: %v, body: %s", err, bodyStr)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": fmt.Sprintf("Failed to decode response: %v", err),
+		})
+		return
+	}
+
+	log.Printf("Decoded API response: %+v", apiResponse)
+
+	// Extract storage_box data - handle nested structure
+	var storageBox map[string]interface{}
+	if sb, ok := apiResponse["storage_box"].(map[string]interface{}); ok {
+		storageBox = sb
+	} else {
+		// Maybe the response is directly the storage_box?
+		storageBox = apiResponse
+	}
+
+	// Extract used_size from stats.size_data
+	var usedSize int64 = 0
+	var totalSize int64 = 0
+	
+	// Get used_size from stats.size_data
+	if stats, ok := storageBox["stats"].(map[string]interface{}); ok {
+		if sizeData, ok := stats["size_data"].(float64); ok {
+			usedSize = int64(sizeData)
+		} else if sizeData, ok := stats["size_data"].(int64); ok {
+			usedSize = sizeData
+		}
+		log.Printf("Storage box used size (stats.size_data): %d bytes", usedSize)
+	} else {
+		log.Printf("Warning: Storage box stats not found for box ID %d", h.config.HetznerBoxID)
+	}
+	
+	// Get total_size from storage_box.storage_box_type.size
+	if storageBoxType, ok := storageBox["storage_box_type"].(map[string]interface{}); ok {
+		if size, ok := storageBoxType["size"].(float64); ok {
+			totalSize = int64(size)
+		} else if size, ok := storageBoxType["size"].(int64); ok {
+			totalSize = size
+		}
+		log.Printf("Storage box total size (storage_box_type.size): %d bytes", totalSize)
+	} else {
+		// Log available keys for debugging
+		keys := make([]string, 0, len(storageBox))
+		for k := range storageBox {
+			keys = append(keys, k)
+		}
+		log.Printf("Warning: Storage box type not found for box ID %d. Available keys: %v", h.config.HetznerBoxID, keys)
+		// Return error response instead of empty data
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"error": fmt.Sprintf("Storage box type not found in response for box ID %d", h.config.HetznerBoxID),
+		})
+		return
+	}
+	
+	// Validate that we got some data
+	if totalSize == 0 {
+		log.Printf("Warning: Total size is 0, which might indicate an issue")
+	}
+	
+	log.Printf("Storage box - Used: %d bytes, Total: %d bytes", usedSize, totalSize)
+
+	// Convert to TB (1 TB = 1024^4 bytes)
+	const bytesPerTB = 1024 * 1024 * 1024 * 1024
+	usedSizeTB := float64(usedSize) / float64(bytesPerTB)
+	totalSizeTB := float64(totalSize) / float64(bytesPerTB)
+
+	// Calculate usage percentage
+	usagePercent := 0.0
+	if totalSize > 0 {
+		usagePercent = (float64(usedSize) / float64(totalSize)) * 100.0
+	}
+
+	response := FTPUsageResponse{
+		UsedSize:     usedSize,
+		TotalSize:    totalSize,
+		UsedSizeTB:   usedSizeTB,
+		TotalSizeTB:  totalSizeTB,
+		UsagePercent: usagePercent,
+	}
+
+	// Cache the response with rate limit info
+	h.ftpCacheMutex.Lock()
+	h.ftpUsageCache = &cachedFTPUsage{
+		data:            response,
+		timestamp:       time.Now(),
+		rateLimitRemain: rateLimitRemain,
+		rateLimitReset:  rateLimitReset,
+	}
+	h.ftpCacheMutex.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Cache", "MISS")
+	w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", rateLimitRemain))
+	if !rateLimitReset.IsZero() {
+		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", rateLimitReset.Unix()))
+	}
+	json.NewEncoder(w).Encode(response)
+}

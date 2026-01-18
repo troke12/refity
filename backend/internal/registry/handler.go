@@ -11,6 +11,7 @@ import (
 	"context"
 	godigest "github.com/opencontainers/go-digest"
 	"refity/backend/internal/driver/sftp"
+	"refity/backend/internal/database"
 	"sync"
 	"strconv"
 )
@@ -217,39 +218,71 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		}
 		// Hitung digest manifest
 		manifestDigest := godigest.FromBytes(manifest)
+		digestStr := manifestDigest.String()
+		
+		// Simpan manifest dengan nama tag (ref)
 		err = localDriver.PutContent(context.TODO(), manifestPath, manifest, nil)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to write manifest to local"))
 			return
 		}
-		// Setelah ditulis ke local, upload ke SFTP secara async
+		
+		// Simpan juga manifest dengan nama digest untuk akses via digest
+		manifestDigestPath := fmt.Sprintf("registry/%s/manifests/%s", name, digestStr)
+		manifestDigestPath = strings.TrimLeft(manifestDigestPath, "/")
+		err = localDriver.PutContent(context.TODO(), manifestDigestPath, manifest, nil)
+		if err != nil {
+			log.Printf("Warning: failed to write manifest with digest name: %v", err)
+			// Continue anyway, tag-based access should still work
+		}
+		
+		// Setelah ditulis ke local, upload ke SFTP secara async (keduanya: tag dan digest)
 		ctx := context.TODO()
-		go func(localPath, sftpPath string, data []byte) {
+		go func(tagPath, digestPath string, data []byte) {
 			sftpSemaphore <- struct{}{}
 			defer func() { <-sftpSemaphore }()
-			lockIface, _ := sftpPathLocks.LoadOrStore(sftpPath, &sync.Mutex{})
+			
+			// Upload dengan nama tag
+			lockIface, _ := sftpPathLocks.LoadOrStore(tagPath, &sync.Mutex{})
 			pathLock := lockIface.(*sync.Mutex)
 			pathLock.Lock()
-			defer pathLock.Unlock()
-			log.Printf("[async SFTP] Start upload manifest: %s -> %s", localPath, sftpPath)
+			log.Printf("[async SFTP] Start upload manifest (tag): %s -> %s", tagPath, tagPath)
 			maxRetry := 5
 			var err error
 			for i := 0; i < maxRetry; i++ {
-				err = sftpDriver.PutContent(ctx, sftpPath, data, nil)
+				err = sftpDriver.PutContent(ctx, tagPath, data, nil)
 				if err == nil {
-					log.Printf("[async SFTP] Success upload manifest: %s -> %s (try %d)", localPath, sftpPath, i+1)
+					log.Printf("[async SFTP] Success upload manifest (tag): %s -> %s (try %d)", tagPath, tagPath, i+1)
 					break
 				}
-				log.Printf("[async SFTP] Retry %d: failed to upload manifest to SFTP: %v", i+1, err)
+				log.Printf("[async SFTP] Retry %d: failed to upload manifest (tag) to SFTP: %v", i+1, err)
 				time.Sleep(2 * time.Second)
 			}
 			if err != nil {
-				log.Printf("[async SFTP] FINAL FAIL manifest: %v", err)
-				return
+				log.Printf("[async SFTP] FINAL FAIL manifest (tag): %v", err)
 			}
-			// Tidak perlu hapus local manifest
-		}(manifestPath, manifestPath, manifest)
+			pathLock.Unlock()
+			
+			// Upload dengan nama digest
+			lockIface2, _ := sftpPathLocks.LoadOrStore(digestPath, &sync.Mutex{})
+			pathLock2 := lockIface2.(*sync.Mutex)
+			pathLock2.Lock()
+			log.Printf("[async SFTP] Start upload manifest (digest): %s -> %s", digestPath, digestPath)
+			for i := 0; i < maxRetry; i++ {
+				err = sftpDriver.PutContent(ctx, digestPath, data, nil)
+				if err == nil {
+					log.Printf("[async SFTP] Success upload manifest (digest): %s -> %s (try %d)", digestPath, digestPath, i+1)
+					break
+				}
+				log.Printf("[async SFTP] Retry %d: failed to upload manifest (digest) to SFTP: %v", i+1, err)
+				time.Sleep(2 * time.Second)
+			}
+			if err != nil {
+				log.Printf("[async SFTP] FINAL FAIL manifest (digest): %v", err)
+			}
+			pathLock2.Unlock()
+		}(manifestPath, manifestDigestPath, manifest)
 		
 		// Save image metadata to database
 		if db != nil {
@@ -264,14 +297,64 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("Manifest uploaded"))
 	case http.MethodGet:
+		// Coba ambil manifest dengan ref yang diberikan (bisa tag atau digest)
 		manifest, err := sftpDriver.GetContent(context.TODO(), manifestPath)
 		if err != nil {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("Manifest not found on SFTP"))
-			return
+			// Fallback: coba cari via database
+			if db != nil {
+				var img *database.Image
+				var dbErr error
+				
+				if strings.HasPrefix(ref, "sha256:") {
+					// Ref adalah digest, cari image dengan digest ini
+					img, dbErr = db.GetImageByDigest(ref)
+				} else {
+					// Ref adalah tag, cari image dengan tag ini
+					img, dbErr = db.GetImage(name, ref)
+				}
+				
+				if dbErr == nil && img != nil {
+					// Coba ambil manifest dengan nama tag (untuk backward compatibility)
+					tagPath := fmt.Sprintf("registry/%s/manifests/%s", name, img.Tag)
+					tagPath = strings.TrimLeft(tagPath, "/")
+					manifest, err = sftpDriver.GetContent(context.TODO(), tagPath)
+					if err == nil {
+						manifestPath = tagPath
+					} else {
+						// Jika tidak ditemukan dengan tag, coba dengan digest
+						digestPath := fmt.Sprintf("registry/%s/manifests/%s", name, img.Digest)
+						digestPath = strings.TrimLeft(digestPath, "/")
+						manifest, err = sftpDriver.GetContent(context.TODO(), digestPath)
+						if err == nil {
+							manifestPath = digestPath
+						}
+					}
+				}
+			}
+			
+			if err != nil {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("Manifest not found on SFTP"))
+				return
+			}
 		}
+		
 		// Set proper Content-Type header for manifest
-		w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+		// Cek apakah ini manifest list atau single manifest
+		var manifestData map[string]interface{}
+		if err := json.Unmarshal(manifest, &manifestData); err == nil {
+			if _, isList := manifestData["manifests"]; isList {
+				w.Header().Set("Content-Type", "application/vnd.docker.distribution.manifest.list.v2+json")
+			} else {
+				w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+			}
+		} else {
+			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+		}
+		
+		// Set Docker-Content-Digest header
+		manifestDigest := godigest.FromBytes(manifest)
+		w.Header().Set("Docker-Content-Digest", manifestDigest.String())
 		w.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
 		w.WriteHeader(http.StatusOK)
 		w.Write(manifest)

@@ -1,68 +1,172 @@
+/* Docker Hub Style Group Page */
+.container-main {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #FFFFFF;
+}
+
+/* Content Area */
+.container-main > .container-fluid {
+  max-width: var(--container-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--container-padding);
+}
+
+/* Card Header Navigation */
+.card-header-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.card-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-link-back {
+  color: var(--docker-blue);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 0;
+  transition: var(--transition);
+  border: 1px solid var(--docker-border);
+  background: white;
+}
+
+.nav-link-back:hover {
+  background: var(--docker-blue-light);
+  border-color: var(--docker-blue);
+  color: var(--docker-blue-dark);
+}
+
+.nav-link-back i {
+  font-size: 1rem;
+}
+
+/* Cards */
+.card {
+  border: 1px solid var(--docker-border);
+  border-radius: 0;
+  box-shadow: none;
+  transition: var(--transition);
+  background: white;
+  overflow: hidden;
+  margin-bottom: var(--spacing-md);
+}
+
+.card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--docker-blue-light);
+}
+
+.card-header {
+  background: white;
+  border-bottom: 1px solid var(--docker-border);
+  padding: 1.25rem 1.5rem;
+}
+
+.card-header h5 {
+  font-weight: 600;
+  color: var(--docker-text);
+  font-size: 1.125rem;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.card-header h5 i {
+  color: var(--docker-blue);
+  font-size: 1.25rem;
+}
+
+.card-header small {
+  color: var(--docker-text-light);
+  font-size: 0.875rem;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+.card-body {
+  padding: 1.5rem;
+}
+
 .repository-card {
   transition: var(--transition);
   cursor: pointer;
-  border: 1px solid #e2e8f0;
-  position: relative;
-  overflow: hidden;
-}
-
-.repository-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: var(--primary-gradient);
-  transform: scaleX(0);
-  transition: transform 0.3s ease;
+  border: 1px solid var(--docker-border);
+  background: white;
+  height: 100%;
 }
 
 .repository-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-md);
-  border-color: #cbd5e0;
-}
-
-.repository-card:hover::before {
-  transform: scaleX(1);
+  border-color: var(--docker-blue);
+  box-shadow: var(--shadow-sm);
 }
 
 .repository-card .card-title {
   font-weight: 600;
-  color: #1a202c;
-  font-size: 1.1rem;
+  color: var(--docker-text);
+  font-size: 1rem;
   margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .repository-card .card-title i {
-  color: #667eea;
+  color: var(--docker-blue);
+  font-size: 1.125rem;
 }
 
 .repository-card .card-text {
-  color: #718096;
-  font-size: 0.9rem;
+  color: var(--docker-text-light);
+  font-size: 0.875rem;
   margin-bottom: 0.5rem;
 }
 
-.breadcrumb {
-  background: transparent;
-  padding: 0;
-  margin-bottom: 1.5rem;
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .container-main > .container-fluid {
+    padding: var(--container-padding-mobile);
+  }
+
+  .card-header,
+  .card-body {
+    padding: 1rem;
+  }
+
+  .card-header h5 {
+    font-size: 1rem;
+  }
+
+  .nav-link-back {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+  }
+
+  .nav-link-back i {
+    font-size: 0.875rem;
+  }
 }
 
-.breadcrumb-item a {
-  color: #667eea;
-  text-decoration: none;
-  transition: var(--transition);
-}
+@media (max-width: 576px) {
+  .card-header-title {
+    gap: 0.5rem;
+  }
 
-.breadcrumb-item a:hover {
-  color: #764ba2;
-  text-decoration: underline;
+  .card-header h5 {
+    font-size: 0.9375rem;
+  }
 }
-
-.breadcrumb-item.active {
-  color: #718096;
-}
-

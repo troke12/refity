@@ -79,7 +79,7 @@ func main() {
 	log.Println("Database initialized successfully")
 
 	regRouter := registry.NewRouterWithDeps(localDriver, driver, cfg, db)
-	apiRouter := api.NewAPIRouter(driver, db)
+	apiRouter := api.NewAPIRouter(driver, db, cfg)
 
 	// Create main router
 	mainRouter := http.NewServeMux()

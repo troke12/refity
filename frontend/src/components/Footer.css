@@ -1,0 +1,50 @@
+/* Docker Hub Style Footer */
+.app-footer {
+  margin-top: auto;
+  padding: 0.5rem 0;
+  background: var(--docker-gray-light);
+  border-top: 1px solid var(--docker-border);
+  width: 100%;
+}
+
+.footer-content {
+  max-width: var(--container-max-width);
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 var(--container-padding);
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.footer-left {
+  display: flex;
+  align-items: center;
+}
+
+.footer-text {
+  color: var(--docker-text-light);
+  font-size: 0.8125rem;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .app-footer {
+    padding: 0.375rem 0;
+  }
+
+  .footer-content {
+    justify-content: flex-start;
+    padding: 0 var(--container-padding-mobile);
+  }
+
+  .footer-left {
+    justify-content: flex-start;
+  }
+
+  .footer-text {
+    font-size: 0.7rem;
+  }
+}
