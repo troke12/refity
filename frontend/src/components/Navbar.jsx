@@ -46,6 +46,10 @@ function Navbar({ onRefresh, isRefreshing, title }) {
         
         {/* Desktop Menu */}
         <div className="navbar-menu-desktop">
+          <Link to="/profile" className="btn-nav">
+            <i className="bi bi-person"></i>
+            <span>Profile</span>
+          </Link>
           {onRefresh && (
             <button
               onClick={onRefresh}
@@ -78,6 +82,14 @@ function Navbar({ onRefresh, isRefreshing, title }) {
 
       {/* Mobile Menu */}
       <div className={`navbar-menu-mobile ${isMenuOpen ? 'open' : ''}`}>
+        <Link
+          to="/profile"
+          className="btn-nav-mobile"
+          onClick={() => setIsMenuOpen(false)}
+        >
+          <i className="bi bi-person"></i>
+          <span>Profile</span>
+        </Link>
         {onRefresh && (
           <button
             onClick={() => {

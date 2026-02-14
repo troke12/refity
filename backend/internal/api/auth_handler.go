@@ -94,7 +94,6 @@ func (h *AuthHandler) MeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get user info from JWT (set by middleware)
 	userID, username, role := auth.GetUserFromRequest(r)
 
 	w.Header().Set("Content-Type", "application/json")
@@ -102,6 +101,65 @@ func (h *AuthHandler) MeHandler(w http.ResponseWriter, r *http.Request) {
 		"id":       userID,
 		"username": username,
 		"role":     role,
+	})
+}
+
+func (h *AuthHandler) ChangePasswordHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.NewPassword) < 6 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "New password must be at least 6 characters",
+		})
+		return
+	}
+
+	userID, _, _ := auth.GetUserFromRequest(r)
+	user, err := h.db.GetUserByID(userID)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.CurrentPassword)); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"message": "Current password is incorrect",
+		})
+		return
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, "Failed to update password", http.StatusInternalServerError)
+		return
+	}
+	if err := h.db.UpdateUserPassword(userID, string(hashed)); err != nil {
+		http.Error(w, "Failed to update password", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Password updated successfully",
 	})
 }
 

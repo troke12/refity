@@ -41,6 +41,11 @@ func (r *APIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	if path == "/api/auth/password" && req.Method == http.MethodPut {
+		auth.JWTMiddleware(http.HandlerFunc(r.authHandler.ChangePasswordHandler)).ServeHTTP(w, req)
+		return
+	}
+
 	if path == "/api/dashboard" && req.Method == http.MethodGet {
 		auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.DashboardHandler)).ServeHTTP(w, req)
 		return

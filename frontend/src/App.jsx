@@ -4,6 +4,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import GroupPage from './pages/GroupPage';
 import RepositoryPage from './pages/RepositoryPage';
+import Profile from './pages/Profile';
 import { isAuthenticated } from './services/api';
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
         <Route path="/" element={auth ? <Dashboard /> : <Navigate to="/login" />} />
         <Route path="/group/:groupName" element={auth ? <GroupPage /> : <Navigate to="/login" />} />
         <Route path="/group/:groupName/repository/:repoName" element={auth ? <RepositoryPage /> : <Navigate to="/login" />} />
+        <Route path="/profile" element={auth ? <Profile /> : <Navigate to="/login" />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>

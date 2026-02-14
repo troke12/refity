@@ -87,6 +87,11 @@
   color: white;
 }
 
+a.btn-nav {
+  text-decoration: none;
+  cursor: pointer;
+}
+
 .btn-nav:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -156,6 +161,11 @@
 .btn-nav-mobile:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.15);
   color: white;
+}
+
+a.btn-nav-mobile {
+  text-decoration: none;
+  cursor: pointer;
 }
 
 .btn-nav-mobile:disabled {

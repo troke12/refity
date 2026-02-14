@@ -205,6 +205,23 @@ func (d *Database) GetUserByUsername(username string) (*User, error) {
 	return &user, nil
 }
 
+func (d *Database) GetUserByID(id int64) (*User, error) {
+	var user User
+	err := d.db.QueryRow(`
+		SELECT id, username, password_hash, role, created_at
+		FROM users WHERE id = ?
+	`, id).Scan(&user.ID, &user.Username, &user.PasswordHash, &user.Role, &user.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+func (d *Database) UpdateUserPassword(id int64, newPasswordHash string) error {
+	_, err := d.db.Exec(`UPDATE users SET password_hash = ? WHERE id = ?`, newPasswordHash, id)
+	return err
+}
+
 func (d *Database) CreateUser(username, password string, role string) (*User, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {

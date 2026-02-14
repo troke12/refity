@@ -6,7 +6,7 @@ function Footer() {
       <div className="footer-content">
         <div className="footer-left">
           <span className="footer-text">
-            © 2025 Refity. All rights reserved.
+            © 2025 – {new Date().getFullYear()}. All rights reserved.
           </span>
         </div>
       </div>
