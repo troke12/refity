@@ -97,6 +97,53 @@
   margin-top: 0.25rem;
 }
 
+.docker-pull-block {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  background: var(--docker-gray-light);
+  border: 1px solid var(--docker-border);
+  border-radius: 0;
+}
+
+.docker-pull-cmd {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--docker-text);
+  background: transparent;
+  border: none;
+  padding: 0;
+  overflow-x: auto;
+}
+
+.docker-pull-copy {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.docker-pull-hint {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.docker-pull-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+}
+
+.docker-pull-cell code.docker-pull-row-cmd {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .card-body {
   padding: 1.5rem;
 }

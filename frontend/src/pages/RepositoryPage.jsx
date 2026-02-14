@@ -7,16 +7,24 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import './RepositoryPage.css';
 
+function getRegistryHost() {
+  const fromEnv = import.meta.env.VITE_REGISTRY_URL;
+  if (fromEnv) return fromEnv.replace(/\/$/, '');
+  if (import.meta.env.PROD) return window.location.host;
+  return 'localhost:5000';
+}
+
 function RepositoryPage() {
   const { groupName, repoName } = useParams();
+  const decodedGroup = decodeURIComponent(groupName || '');
+  const decodedRepo = decodeURIComponent(repoName || '');
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [copiedTag, setCopiedTag] = useState(null);
 
   const loadData = async () => {
     try {
-      const decodedGroup = decodeURIComponent(groupName);
-      const decodedRepo = decodeURIComponent(repoName);
       const repoData = await groupsAPI.getTags(decodedGroup, decodedRepo);
       setData(repoData);
     } catch (error) {
@@ -37,13 +45,28 @@ function RepositoryPage() {
   };
 
 
+  const registryHost = getRegistryHost();
+  const fullImage = `${registryHost}/${decodedGroup}/${decodedRepo}`;
+
+  const getDockerPullCmd = (tagName) => `docker pull ${fullImage}:${tagName}`;
+
+  const handleCopyDockerPull = async (tagName) => {
+    try {
+      await navigator.clipboard.writeText(getDockerPullCmd(tagName));
+      setCopiedTag(tagName);
+      setTimeout(() => setCopiedTag(null), 2000);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleDeleteTag = async (tagName) => {
     if (!window.confirm(`Are you sure you want to delete tag "${tagName}"?`)) {
       return;
     }
 
     try {
-      const fullRepoName = `${decodeURIComponent(groupName)}/${decodeURIComponent(repoName)}`;
+      const fullRepoName = `${decodedGroup}/${decodedRepo}`;
       await repositoriesAPI.deleteTag(fullRepoName, tagName);
       loadData();
     } catch (error) {
@@ -61,9 +84,6 @@ function RepositoryPage() {
       </div>
     );
   }
-
-  const decodedGroup = decodeURIComponent(groupName);
-  const decodedRepo = decodeURIComponent(repoName);
 
   return (
     <div className="container-main">
@@ -94,6 +114,7 @@ function RepositoryPage() {
                       <th>Tag</th>
                       <th>Size</th>
                       <th>Date Created</th>
+                      <th>Docker pull</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
@@ -112,6 +133,20 @@ function RepositoryPage() {
                             <i className="bi bi-calendar3 me-1"></i>
                             {formatDate(tag.created_at)}
                           </small>
+                        </td>
+                        <td>
+                          <div className="docker-pull-cell">
+                            <code className="docker-pull-row-cmd">{getDockerPullCmd(tag.name)}</code>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-outline-primary"
+                              onClick={() => handleCopyDockerPull(tag.name)}
+                              title="Copy docker pull command"
+                            >
+                              {copiedTag === tag.name ? <i className="bi bi-check2"></i> : <i className="bi bi-clipboard"></i>}
+                              {copiedTag === tag.name ? ' Copied' : ' Copy'}
+                            </button>
+                          </div>
                         </td>
                         <td>
                           <button
