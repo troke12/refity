@@ -30,6 +30,106 @@ Refity consists of two separate services:
 - **Backend** (Go): Docker Registry API and REST API for web UI (Port 5000)
 - **Frontend** (React): Modern web interface for managing repositories (Port 8080)
 
+### System Overview
+
+```mermaid
+flowchart TB
+    subgraph clients["Clients"]
+        Docker["Docker CLI<br/>(push/pull)"]
+        Browser["Browser<br/>(Web UI)"]
+    end
+
+    subgraph refity["Refity"]
+        subgraph frontend["Frontend (React)"]
+            UI["Vite + React<br/>:8080"]
+        end
+
+        subgraph backend["Backend (Go) :5000"]
+            Main["main.go"]
+            Main --> RegRouter["/v2/* Registry Router"]
+            Main --> APIRouter["/api/* API Router"]
+            RegRouter --> RegHandler["Registry Handler"]
+            APIRouter --> AuthHandler["Auth Handler<br/>(JWT)"]
+            APIRouter --> APIHandler["API Handler"]
+            RegHandler --> LocalDriver["Local Driver<br/>/tmp/refity buffer"]
+            RegHandler --> SFTPDriver["SFTP Driver<br/>(pool + async upload)"]
+            APIHandler --> SFTPDriver
+            APIHandler --> DB
+            AuthHandler --> DB[("SQLite<br/>refity.db")]
+        end
+    end
+
+    subgraph storage["Storage"]
+        SFTP["SFTP Server<br/>(blobs, manifests)"]
+    end
+
+    Docker -->|"Registry API v2"| RegRouter
+    Browser --> UI
+    UI -->|"REST + JWT"| APIRouter
+    SFTPDriver <-->|"SSH/SFTP"| SFTP
+```
+
+### Request Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Docker
+    participant Browser
+    participant Frontend
+    participant Backend
+    participant Local
+    participant SFTP
+    participant SQLite
+
+    Note over User,SQLite: Push image (Docker)
+    User->>Docker: docker push
+    Docker->>Backend: PUT /v2/.../blobs, manifests
+    Backend->>Local: Buffer layers (temp)
+    Backend->>SFTP: Async upload blobs/manifests
+    SFTP-->>Backend: OK
+
+    Note over User,SQLite: Web UI
+    User->>Browser: Open :8080
+    Browser->>Frontend: Load React app
+    User->>Frontend: Login
+    Frontend->>Backend: POST /api/auth/login
+    Backend->>SQLite: Verify user
+    Backend-->>Frontend: JWT
+    Frontend->>Backend: GET /api/dashboard, /api/groups (Authorization: JWT)
+    Backend->>SFTP: List repos (optional)
+    Backend->>SQLite: Metadata
+    Backend-->>Frontend: JSON
+```
+
+### Component Dependencies
+
+```mermaid
+flowchart LR
+    subgraph backend_packages["Backend packages"]
+        config["config"]
+        database["database"]
+        auth["auth"]
+        api["api"]
+        registry["registry"]
+        driver_sftp["driver/sftp"]
+        driver_local["driver/local"]
+    end
+
+    main["cmd/server"] --> config
+    main --> database
+    main --> driver_local
+    main --> driver_sftp
+    main --> registry
+    main --> api
+    api --> database
+    api --> auth
+    api --> driver_sftp
+    registry --> driver_local
+    registry --> driver_sftp
+    registry --> database
+```
+
 ---
 
 ## Quick Start
@@ -137,6 +237,8 @@ On first run, a default admin user is automatically created:
 - **Role**: `admin`
 
 **Important**: Change the password immediately after first login!
+
+For production, set `JWT_SECRET`, `CORS_ORIGINS`, and optionally `FTP_KNOWN_HOSTS`. See [SECURITY.md](SECURITY.md).
 
 ---
 

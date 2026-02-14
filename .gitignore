@@ -2,3 +2,8 @@
 data/
 *.exe
 node_modules/
+
+# Backend (Go)
+backend/server
+backend/cmd/server/server
+*.test

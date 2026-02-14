@@ -2,7 +2,10 @@ package sftp
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	pathpkg "path"
@@ -11,10 +14,8 @@ import (
 
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 	"refity/backend/internal/config"
-	"errors"
-	"fmt"
-	"log"
 )
 
 // TODO: Ganti import berikut jika sudah tahu path module Go yang benar
@@ -63,19 +64,28 @@ type DriverPool struct {
 	cfg     *config.Config
 }
 
+func hostKeyCallback(cfg *config.Config) (ssh.HostKeyCallback, error) {
+	if cfg.FTPKnownHosts != "" {
+		return knownhosts.New(cfg.FTPKnownHosts)
+	}
+	return ssh.InsecureIgnoreHostKey(), nil
+}
+
 func NewDriverPool(cfg *config.Config, poolSize int) (*DriverPool, error) {
+	hk, err := hostKeyCallback(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("FTP_KNOWN_HOSTS: %w", err)
+	}
 	clients := make(chan *sftp.Client, poolSize)
 	for i := 0; i < poolSize; i++ {
 		addr := cfg.FTPHost + ":" + cfg.FTPPort
 		user := cfg.FTPUsername
 		pass := cfg.FTPPassword
 		sshConfig := &ssh.ClientConfig{
-			User: user,
-			Auth: []ssh.AuthMethod{
-				ssh.Password(pass),
-			},
-			HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-			Timeout: 10 * time.Second,
+			User:            user,
+			Auth:             []ssh.AuthMethod{ssh.Password(pass)},
+			HostKeyCallback:  hk,
+			Timeout:          10 * time.Second,
 		}
 		conn, err := ssh.Dial("tcp", addr, sshConfig)
 		if err != nil {
@@ -330,18 +340,20 @@ type Driver struct {
 	client *sftp.Client
 }
 
-// NewDriverWithConfig membuat koneksi SFTP baru dengan konfigurasi dari config.Config
+// NewDriverWithConfig creates SFTP connection using config. Set FTP_KNOWN_HOSTS in production to verify host keys.
 func NewDriverWithConfig(cfg *config.Config) (*Driver, error) {
+	hk, err := hostKeyCallback(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("FTP_KNOWN_HOSTS: %w", err)
+	}
 	addr := cfg.FTPHost + ":" + cfg.FTPPort
 	user := cfg.FTPUsername
 	pass := cfg.FTPPassword
 	sshConfig := &ssh.ClientConfig{
-		User: user,
-		Auth: []ssh.AuthMethod{
-			ssh.Password(pass),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout: 10 * time.Second,
+		User:            user,
+		Auth:             []ssh.AuthMethod{ssh.Password(pass)},
+		HostKeyCallback:  hk,
+		Timeout:          10 * time.Second,
 	}
 	conn, err := ssh.Dial("tcp", addr, sshConfig)
 	if err != nil {

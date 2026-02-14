@@ -5,42 +5,41 @@ import (
 	"net/http"
 	"os"
 
+	"refity/backend/internal/api"
+	"refity/backend/internal/auth"
 	"refity/backend/internal/config"
 	"refity/backend/internal/database"
-	"refity/backend/internal/driver/sftp"
 	"refity/backend/internal/driver/local"
+	"refity/backend/internal/driver/sftp"
 	"refity/backend/internal/registry"
-	"refity/backend/internal/api"
 )
 
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
-		// Allow frontend origins
-		allowedOrigins := []string{"http://localhost:8080", "http://127.0.0.1:8080"}
-		allowed := false
-		for _, allowedOrigin := range allowedOrigins {
-			if origin == allowedOrigin {
-				allowed = true
-				break
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+			allowed := false
+			for _, o := range allowedOrigins {
+				if origin == o {
+					allowed = true
+					break
+				}
 			}
-		}
-		
-		if allowed {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Allow-Credentials", "true")
+			if allowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
 
-		// Handle preflight requests
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 
-		next.ServeHTTP(w, r)
-	})
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func main() {
@@ -50,6 +49,7 @@ func main() {
 	if cfg.FTPHost == "" || cfg.FTPUsername == "" || cfg.FTPPassword == "" {
 		log.Fatal("FTP config must be set in environment variables")
 	}
+	auth.InitSecret(cfg.JWTSecret)
 
 	sftpPort := cfg.FTPPort
 	if sftpPort == "" {
@@ -94,8 +94,8 @@ func main() {
 		apiRouter.ServeHTTP(w, r)
 	})
 
-	// Apply CORS middleware
-	handler := corsMiddleware(mainRouter)
+	// Apply CORS middleware (use CORS_ORIGINS in production)
+	handler := corsMiddleware(cfg.CORSOrigins)(mainRouter)
 
 	port := os.Getenv("PORT")
 	if port == "" {

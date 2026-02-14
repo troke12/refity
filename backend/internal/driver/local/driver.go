@@ -2,10 +2,14 @@ package local
 
 import (
 	"context"
+	"errors"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+var ErrPathTraversal = errors.New("path escapes root")
 
 type StorageDriver interface {
 	Name() string
@@ -26,16 +30,35 @@ func NewDriver(root string) *Driver {
 
 func (d *Driver) Name() string { return "local" }
 
-func (d *Driver) fullPath(p string) string {
-	return filepath.Join(d.root, p)
+// fullPath returns path under d.root; returns error if p escapes root (path traversal).
+func (d *Driver) fullPath(p string) (string, error) {
+	cleaned := filepath.Clean(p)
+	if cleaned == ".." || strings.HasPrefix(cleaned, ".."+string(filepath.Separator)) {
+		return "", ErrPathTraversal
+	}
+	absRoot, _ := filepath.Abs(d.root)
+	joined := filepath.Join(d.root, cleaned)
+	absPath, _ := filepath.Abs(joined)
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return "", ErrPathTraversal
+	}
+	return joined, nil
 }
 
 func (d *Driver) GetContent(ctx context.Context, path string) ([]byte, error) {
-	return os.ReadFile(d.fullPath(path))
+	fp, err := d.fullPath(path)
+	if err != nil {
+		return nil, err
+	}
+	return os.ReadFile(fp)
 }
 
 func (d *Driver) PutContent(ctx context.Context, path string, content []byte, progressCb ...func(written, total int64)) error {
-	fp := d.fullPath(path)
+	fp, err := d.fullPath(path)
+	if err != nil {
+		return err
+	}
 	dir := filepath.Dir(fp)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -44,7 +67,10 @@ func (d *Driver) PutContent(ctx context.Context, path string, content []byte, pr
 }
 
 func (d *Driver) List(ctx context.Context, path string) ([]string, error) {
-	fp := d.fullPath(path)
+	fp, err := d.fullPath(path)
+	if err != nil {
+		return nil, err
+	}
 	fis, err := ioutil.ReadDir(fp)
 	if err != nil {
 		return nil, err
@@ -57,8 +83,14 @@ func (d *Driver) List(ctx context.Context, path string) ([]string, error) {
 }
 
 func (d *Driver) Move(ctx context.Context, sourcePath, destPath string) error {
-	src := d.fullPath(sourcePath)
-	dst := d.fullPath(destPath)
+	src, err := d.fullPath(sourcePath)
+	if err != nil {
+		return err
+	}
+	dst, err := d.fullPath(destPath)
+	if err != nil {
+		return err
+	}
 	dir := filepath.Dir(dst)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
@@ -67,5 +99,9 @@ func (d *Driver) Move(ctx context.Context, sourcePath, destPath string) error {
 }
 
 func (d *Driver) Delete(ctx context.Context, path string) error {
-	return os.RemoveAll(d.fullPath(path))
+	fp, err := d.fullPath(path)
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(fp)
 } 

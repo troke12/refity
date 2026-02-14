@@ -1,20 +1,39 @@
 package registry
 
 import (
-	"io"
-	"net/http"
-	"strings"
-	"fmt"
-	"time"
-	"log"
-	"encoding/json"
 	"context"
-	godigest "github.com/opencontainers/go-digest"
-	"refity/backend/internal/driver/sftp"
-	"refity/backend/internal/database"
-	"sync"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"regexp"
 	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	godigest "github.com/opencontainers/go-digest"
+	"refity/backend/internal/database"
+	"refity/backend/internal/driver/sftp"
 )
+
+// validRepoName restricts repo name to avoid path traversal and invalid chars (Docker: alphanumeric, separators, one optional /)
+var validRepoName = regexp.MustCompile(`^[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)?$`)
+
+func validateRepoName(name string) bool {
+	if name == "" || strings.Contains(name, "..") {
+		return false
+	}
+	return validRepoName.MatchString(name)
+}
+
+func validateManifestRef(ref string) bool {
+	if ref == "" || strings.Contains(ref, "..") || strings.Contains(ref, "/") || strings.Contains(ref, "\\") {
+		return false
+	}
+	return true
+}
 
 var sftpSemaphore = make(chan struct{}, 2) // max 2 upload paralel
 var sftpPathLocks sync.Map // map[string]*sync.Mutex
@@ -76,8 +95,13 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 
 func initiateBlobUpload(w http.ResponseWriter, _ *http.Request, path string) {
 	uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
-	name := strings.TrimSuffix(strings.Split(path, "/blobs/")[0], "/")
-	
+	name := strings.TrimSuffix(strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/"), "/")
+	if !validateRepoName(name) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid repository name"))
+		return
+	}
+
 	// Auto-create repository if it doesn't exist (Docker registry standard behavior)
 	if db != nil {
 		if _, err := db.GetRepository(name); err != nil {
@@ -115,6 +139,11 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	name := strings.TrimPrefix(strings.TrimSuffix(parts[0], "/"), "/")
+	if !validateRepoName(name) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid repository name"))
+		return
+	}
 	uploadID := parts[1]
 	blob, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -139,8 +168,19 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 }
 
 func handleBlobDownload(w http.ResponseWriter, path string) {
-	name := strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/")
-	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, strings.Split(path, "/blobs/")[1])
+	name := strings.TrimPrefix(strings.TrimSuffix(strings.Split(path, "/blobs/")[0], "/"), "/")
+	if !validateRepoName(name) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid repository name"))
+		return
+	}
+	blobPart := strings.Split(path, "/blobs/")[1]
+	if strings.Contains(blobPart, "..") || strings.Contains(blobPart, "/") {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid blob path"))
+		return
+	}
+	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, blobPart)
 	blobPath = strings.TrimLeft(blobPath, "/")
 	blob, err := sftpDriver.GetContent(context.TODO(), blobPath)
 	if err != nil {
@@ -153,8 +193,18 @@ func handleBlobDownload(w http.ResponseWriter, path string) {
 }
 
 func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
-	name := strings.TrimPrefix(strings.Split(path, "/manifests/")[0], "/")
+	name := strings.TrimPrefix(strings.TrimSuffix(strings.Split(path, "/manifests/")[0], "/"), "/")
+	if !validateRepoName(name) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid repository name"))
+		return
+	}
 	ref := strings.Split(path, "/manifests/")[1]
+	if !validateManifestRef(ref) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid manifest reference"))
+		return
+	}
 	manifestPath := fmt.Sprintf("registry/%s/manifests/%s", name, ref)
 	manifestPath = strings.TrimLeft(manifestPath, "/")
 	switch r.Method {
@@ -392,6 +442,11 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	name := strings.TrimPrefix(strings.TrimSuffix(parts[0], "/"), "/")
+	if !validateRepoName(name) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid repository name"))
+		return
+	}
 	uploadID := parts[1]
 	digest := r.URL.Query().Get("digest")
 	if digest == "" {
@@ -576,10 +631,14 @@ func registryError(w http.ResponseWriter, code, message string, status int) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// Tambahkan handler tags list
 func handleTagsList(w http.ResponseWriter, path string) {
 	parts := strings.SplitN(path, "/tags/list", 2)
-	repo := strings.TrimSuffix(parts[0], "/")
+	repo := strings.TrimPrefix(strings.TrimSuffix(parts[0], "/"), "/")
+	if !validateRepoName(repo) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid repository name"))
+		return
+	}
 	manifestDir := "registry/" + repo + "/manifests"
 	manifestDir = strings.TrimLeft(manifestDir, "/")
 	tags, err := sftpDriver.List(context.TODO(), manifestDir)

@@ -10,7 +10,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte("refity-secret-key-change-in-production") // TODO: Move to config
+var jwtSecret []byte
+
+// InitSecret sets the JWT signing secret (call from main with cfg.JWTSecret). Required before GenerateToken/ValidateToken.
+func InitSecret(secret string) {
+	jwtSecret = []byte(secret)
+}
 
 type Claims struct {
 	UserID   int64  `json:"user_id"`

@@ -564,7 +564,7 @@ func (h *APIHandler) FTPUsageHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Check if Hetzner config is available
 	if h.config.HetznerToken == "" || h.config.HetznerBoxID == 0 {
-		log.Printf("Hetzner config not available - Token: %v, BoxID: %d", h.config.HetznerToken != "", h.config.HetznerBoxID)
+		log.Printf("Hetzner config not available")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
 		json.NewEncoder(w).Encode(map[string]interface{}{
