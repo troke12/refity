@@ -135,6 +135,15 @@
   margin-bottom: 0.5rem;
 }
 
+.repository-card .btn-link.text-danger {
+  font-size: 0.875rem;
+  opacity: 0.85;
+}
+
+.repository-card .btn-link.text-danger:hover {
+  opacity: 1;
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
   .container-main > .container-fluid {

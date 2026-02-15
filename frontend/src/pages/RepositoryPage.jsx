@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { groupsAPI, repositoriesAPI } from '../services/api';
 import { formatBytes } from '../utils/formatBytes';
 import { formatDate } from '../utils/formatDate';
@@ -16,6 +16,7 @@ function getRegistryHost() {
 
 function RepositoryPage() {
   const { groupName, repoName } = useParams();
+  const navigate = useNavigate();
   const decodedGroup = decodeURIComponent(groupName || '');
   const decodedRepo = decodeURIComponent(repoName || '');
   const [data, setData] = useState(null);
@@ -60,18 +61,30 @@ function RepositoryPage() {
     }
   };
 
+  const fullRepoName = `${decodedGroup}/${decodedRepo}`;
+
   const handleDeleteTag = async (tagName) => {
     if (!window.confirm(`Are you sure you want to delete tag "${tagName}"?`)) {
       return;
     }
 
     try {
-      const fullRepoName = `${decodedGroup}/${decodedRepo}`;
       await repositoriesAPI.deleteTag(fullRepoName, tagName);
       loadData();
     } catch (error) {
       console.error('Failed to delete tag:', error);
       alert('Failed to delete tag');
+    }
+  };
+
+  const handleDeleteRepository = async () => {
+    if (!window.confirm(`Delete this repository and all its tags?\n\nThis will also remove the folder from SFTP. This cannot be undone.`)) return;
+    try {
+      await repositoriesAPI.delete(fullRepoName);
+      navigate(`/group/${encodeURIComponent(decodedGroup)}`);
+    } catch (error) {
+      console.error('Failed to delete repository:', error);
+      alert('Failed to delete repository: ' + (error.response?.data?.message || error.message));
     }
   };
 
@@ -101,6 +114,15 @@ function RepositoryPage() {
                   <i className="bi bi-box-seam"></i>
                   {decodedGroup}/{decodedRepo}
                 </h5>
+                <button
+                  type="button"
+                  onClick={handleDeleteRepository}
+                  className="btn btn-link text-danger p-0 ms-2"
+                  title="Delete repository"
+                  aria-label="Delete repository"
+                >
+                  <i className="bi bi-trash"></i>
+                </button>
               </div>
               <small>List of tags for this repository</small>
             </div>

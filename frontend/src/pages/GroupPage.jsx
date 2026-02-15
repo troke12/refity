@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { groupsAPI } from '../services/api';
+import { groupsAPI, repositoriesAPI } from '../services/api';
 import { formatBytes } from '../utils/formatBytes';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -32,6 +32,19 @@ function GroupPage() {
   const handleRefresh = () => {
     setIsRefreshing(true);
     loadData();
+  };
+
+  const handleDeleteRepository = async (e, fullRepoName, repoDisplayName) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.confirm(`Delete repository "${repoDisplayName}" and all its tags?\n\nThis will also remove the folder from SFTP. This cannot be undone.`)) return;
+    try {
+      await repositoriesAPI.delete(fullRepoName);
+      loadData();
+    } catch (err) {
+      console.error('Failed to delete repository:', err);
+      alert('Failed to delete repository: ' + (err.response?.data?.message || err.message));
+    }
   };
 
 
@@ -72,29 +85,39 @@ function GroupPage() {
               <div className="row g-3">
                 {data.repositories.map((repo) => {
                   const totalSize = repo.tags.reduce((sum, tag) => sum + tag.size, 0);
+                  const fullRepoName = `${data.group}/${repo.name}`;
                   return (
-                    <div key={repo.name} className="col-md-4">
-                      <Link
-                        to={`/group/${encodeURIComponent(data.group)}/repository/${encodeURIComponent(repo.name)}`}
-                        className="text-decoration-none"
-                      >
-                        <div className="card h-100 repository-card">
-                          <div className="card-body">
-                            <h6 className="card-title">
+                    <div key={fullRepoName} className="col-md-4">
+                      <div className="card h-100 repository-card">
+                        <div className="card-body d-flex justify-content-between align-items-start">
+                          <Link
+                            to={`/group/${encodeURIComponent(data.group)}/repository/${encodeURIComponent(repo.name)}`}
+                            className="text-decoration-none text-dark flex-grow-1"
+                          >
+                            <h6 className="card-title mb-1">
                               <i className="bi bi-box-seam me-2 text-primary"></i>
                               {repo.name}
                             </h6>
-                            <p className="card-text text-muted mb-1">
+                            <p className="card-text text-muted mb-1 small">
                               <i className="bi bi-tag me-1"></i>
                               {repo.tags.length} {repo.tags.length === 1 ? 'tag' : 'tags'}
                             </p>
-                            <p className="card-text text-muted mb-0">
+                            <p className="card-text text-muted mb-0 small">
                               <i className="bi bi-hdd me-1"></i>
                               {formatBytes(totalSize)}
                             </p>
-                          </div>
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteRepository(e, fullRepoName, repo.name)}
+                            className="btn btn-link text-danger p-0 ms-2"
+                            title="Delete repository"
+                            aria-label="Delete repository"
+                          >
+                            <i className="bi bi-trash"></i>
+                          </button>
                         </div>
-                      </Link>
+                      </div>
                     </div>
                   );
                 })}
