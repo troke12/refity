@@ -209,6 +209,15 @@ img {
   letter-spacing: 0.02em;
 }
 
+.hero .badge-first {
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-dark) 100%);
+  color: var(--white);
+  padding: 0.4rem 1rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
 .hero h1 {
   font-size: clamp(2.25rem, 5vw, 3.25rem);
   font-weight: 800;
@@ -447,6 +456,161 @@ img {
 
 .cta-section .btn {
   margin-top: 0.5rem;
+}
+
+/* Comparison / differentiator band */
+.diff-band {
+  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-dark) 100%);
+  color: var(--white);
+  padding: 3rem 1.5rem;
+  text-align: center;
+}
+
+.diff-band-inner {
+  max-width: var(--container);
+  margin: 0 auto;
+}
+
+.diff-band h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.diff-band p {
+  color: rgba(255,255,255,0.9);
+  font-size: 1.0625rem;
+  max-width: 640px;
+  margin: 0 auto 1.5rem;
+}
+
+.diff-band .btn {
+  background: var(--white);
+  color: var(--blue);
+}
+
+.diff-band .btn:hover {
+  background: var(--blue-light);
+  color: var(--blue-dark);
+  text-decoration: none;
+}
+
+/* Comparison table */
+.comparison-wrap {
+  overflow-x: auto;
+  margin: 1.5rem 0;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.comparison-table th {
+  background: var(--bg-alt);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.comparison-table td {
+  color: var(--text-light);
+}
+
+.comparison-table tr:hover td {
+  background: var(--blue-bg);
+}
+
+.comparison-table .check {
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.comparison-table .mute {
+  color: var(--text-muted);
+}
+
+/* Quote / highlight block */
+.quote-block {
+  background: var(--blue-bg);
+  border-left: 4px solid var(--blue);
+  padding: 1.5rem 1.75rem;
+  margin: 2rem 0;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.quote-block p {
+  margin: 0;
+  font-size: 1.0625rem;
+  color: var(--text);
+  line-height: 1.65;
+}
+
+/* Docs TOC */
+.docs-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 2.5rem;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.docs-toc {
+  position: sticky;
+  top: calc(var(--header-h) + 1rem);
+  height: fit-content;
+  font-size: 0.9375rem;
+}
+
+.docs-toc-title {
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+}
+
+.docs-toc a {
+  display: block;
+  color: var(--text-light);
+  padding: 0.35rem 0;
+  border-left: 2px solid transparent;
+  padding-left: 0.75rem;
+  margin-left: -2px;
+}
+
+.docs-toc a:hover {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.docs-toc a.active {
+  color: var(--blue);
+  font-weight: 500;
+  border-left-color: var(--blue);
+}
+
+.docs-body {
+  min-width: 0;
+}
+
+@media (max-width: 991px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .docs-toc {
+    position: static;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 1rem;
+    margin-bottom: 0.5rem;
+  }
 }
 
 /* Footer */

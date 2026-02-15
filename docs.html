@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Refity documentation: installation with Docker Compose, environment configuration, quick start, and usage." />
-  <meta property="og:title" content="Docs – Refity" />
-  <meta property="og:description" content="Install Refity with Docker Compose. Configure SFTP, JWT, and optional Hetzner usage." />
-  <title>Docs – Refity</title>
+  <meta name="description" content="Refity full documentation: installation, configuration reference, architecture, security, API, and FAQ." />
+  <meta property="og:title" content="Documentation – Refity" />
+  <meta property="og:description" content="Complete Refity docs: Docker Compose install, env config, SFTP, JWT, security, API." />
+  <title>Documentation – Refity</title>
   <base href="/refity/" />
   <link rel="canonical" href="https://troke.id/refity/docs.html" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230066CC'><path d='M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V6h4.17l2 2H20v10z'/></svg>" />
@@ -25,6 +25,7 @@
       </a>
       <nav class="nav">
         <a href="index.html">Home</a>
+        <a href="compare.html">Why SFTP</a>
         <a href="features.html">Features</a>
         <a href="docs.html" class="active">Docs</a>
         <a href="https://github.com/troke12/refity" target="_blank" rel="noopener" class="btn btn-outline">GitHub</a>
@@ -35,62 +36,144 @@
     </div>
     <div class="nav-mobile" id="navMobile">
       <a href="index.html">Home</a>
+      <a href="compare.html">Why SFTP</a>
       <a href="features.html">Features</a>
       <a href="docs.html" class="active">Docs</a>
       <a href="https://github.com/troke12/refity" target="_blank" rel="noopener">GitHub</a>
     </div>
   </header>
 
-  <main class="page-content">
-    <h1>Documentation</h1>
-    <p>Install and configure Refity to run your own Docker private registry with SFTP storage.</p>
+  <main class="docs-layout">
+    <nav class="docs-toc" aria-label="Documentation contents">
+      <div class="docs-toc-title">On this page</div>
+      <a href="#overview">Overview</a>
+      <a href="#requirements">Requirements</a>
+      <a href="#quick-start">Quick start</a>
+      <a href="#configuration">Configuration reference</a>
+      <a href="#architecture">Architecture</a>
+      <a href="#usage">Using the registry</a>
+      <a href="#security">Security</a>
+      <a href="#api">API reference</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="docs-body page-content">
+      <h1 id="overview">Documentation</h1>
+      <p>Refity is a self-hosted Docker private registry that stores all image blobs and manifests on an SFTP server. It implements the <a href="https://docs.docker.com/registry/spec/api/" target="_blank" rel="noopener">Docker Registry HTTP API v2</a> and adds a REST API and web UI for managing groups and repositories.</p>
 
-    <h2>Requirements</h2>
-    <ul>
-      <li>Docker and Docker Compose</li>
-      <li>An SFTP server (e.g. Hetzner Storage Box, VPS with SSH/SFTP, or any SFTP-compatible storage)</li>
-    </ul>
+      <h2 id="requirements">Requirements</h2>
+      <ul>
+        <li><strong>Docker</strong> and <strong>Docker Compose</strong></li>
+        <li>An <strong>SFTP server</strong> (e.g. Hetzner Storage Box, any VPS with SSH/SFTP, or SFTP-compatible storage)</li>
+      </ul>
 
-    <h2>Quick start</h2>
-    <ol>
-      <li>Clone the repository and copy the example env file:</li>
-    </ol>
-    <pre class="code-block"><code>git clone https://github.com/troke12/refity.git
+      <h2 id="quick-start">Quick start</h2>
+      <ol>
+        <li>Clone the repository and copy the example env file:</li>
+      </ol>
+      <pre class="code-block"><code>git clone https://github.com/troke12/refity.git
 cd refity
 cp .env.example .env</code></pre>
-    <ol start="2">
-      <li>Edit <code>.env</code> and set your SFTP credentials: <code>FTP_HOST</code>, <code>FTP_PORT</code>, <code>FTP_USERNAME</code>, <code>FTP_PASSWORD</code>. For production, set <code>JWT_SECRET</code>.</li>
-      <li>Start the stack:</li>
-    </ol>
-    <pre class="code-block"><code>docker-compose up -d</code></pre>
-    <p>Open <strong>http://localhost:8080</strong> for the web UI. Default login: <code>admin</code> / <code>admin</code>. Change the password after first login.</p>
-    <p>The registry API is on port <strong>5000</strong>. Use it as an insecure registry or with TLS in front (e.g. reverse proxy).</p>
+      <ol start="2">
+        <li>Edit <code>.env</code> and set at least: <code>FTP_HOST</code>, <code>FTP_PORT</code>, <code>FTP_USERNAME</code>, <code>FTP_PASSWORD</code>. For production, set <code>JWT_SECRET</code>.</li>
+        <li>Start the stack:</li>
+      </ol>
+      <pre class="code-block"><code>docker-compose up -d</code></pre>
+      <p>Open <strong>http://localhost:8080</strong> for the web UI. Default login: <code>admin</code> / <code>admin</code> — change the password after first login.</p>
+      <p>The registry API is on port <strong>5000</strong>. Configure Docker to use it as an insecure registry, or put a reverse proxy with TLS in front.</p>
 
-    <h2>Environment variables</h2>
-    <p>Key variables (see <code>.env.example</code> in the repo for the full list):</p>
-    <ul>
-      <li><strong>FTP_HOST</strong>, <strong>FTP_PORT</strong>, <strong>FTP_USERNAME</strong>, <strong>FTP_PASSWORD</strong> – Required. Your SFTP server connection details.</li>
-      <li><strong>JWT_SECRET</strong> – Required in production. Use a long random string for signing tokens.</li>
-      <li><strong>CORS_ORIGINS</strong> – Comma-separated allowed origins for the API (e.g. your frontend URL).</li>
-      <li><strong>SFTP_SYNC_UPLOAD</strong> – Set to <code>true</code> if you want uploads to complete before the push response (slower but files are on SFTP when push finishes). Default: <code>false</code> (async).</li>
-      <li><strong>FTP_USAGE_ENABLED</strong> – Set to <code>true</code> only if you use Hetzner Storage Box and want the usage card on the dashboard. Default: <code>false</code>.</li>
-      <li><strong>HCLOUD_TOKEN</strong>, <strong>HETZNER_BOX_ID</strong> – Only needed when <code>FTP_USAGE_ENABLED=true</code>.</li>
-    </ul>
+      <h2 id="configuration">Configuration reference</h2>
+      <p>All configuration is via environment variables. See <code>.env.example</code> in the repo for a categorized list. Summary:</p>
+      <div class="comparison-wrap">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th>Required</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>FTP_HOST</code></td><td>Yes</td><td>SFTP server hostname (e.g. <code>u123456.your-storagebox.de</code> for Hetzner)</td></tr>
+            <tr><td><code>FTP_PORT</code></td><td>Yes</td><td>SFTP port (usually <code>22</code> or <code>23</code> for Hetzner)</td></tr>
+            <tr><td><code>FTP_USERNAME</code></td><td>Yes</td><td>SFTP username</td></tr>
+            <tr><td><code>FTP_PASSWORD</code></td><td>Yes</td><td>SFTP password</td></tr>
+            <tr><td><code>JWT_SECRET</code></td><td>Production</td><td>Secret for signing JWT tokens. Use a long random string (32+ chars).</td></tr>
+            <tr><td><code>CORS_ORIGINS</code></td><td>No</td><td>Comma-separated allowed origins for the API (e.g. your frontend URL). Default: <code>http://localhost:8080</code>, <code>http://127.0.0.1:8080</code></td></tr>
+            <tr><td><code>FTP_KNOWN_HOSTS</code></td><td>No</td><td>Path to SSH <code>known_hosts</code> file for host key verification. Recommended in production.</td></tr>
+            <tr><td><code>SFTP_SYNC_UPLOAD</code></td><td>No</td><td><code>true</code> = upload to SFTP before responding (slower, file on SFTP when push completes). <code>false</code> = async upload. Default: <code>false</code></td></tr>
+            <tr><td><code>FTP_USAGE_ENABLED</code></td><td>No</td><td><code>true</code> only if using Hetzner Storage Box and want the usage card on the dashboard. Default: <code>false</code></td></tr>
+            <tr><td><code>HCLOUD_TOKEN</code></td><td>If FTP_USAGE_ENABLED</td><td>Hetzner Cloud API token (same as HCLOUD token)</td></tr>
+            <tr><td><code>HETZNER_BOX_ID</code></td><td>If FTP_USAGE_ENABLED</td><td>Hetzner Storage Box numeric ID</td></tr>
+            <tr><td><code>PORT</code></td><td>No</td><td>Backend HTTP port. Default: <code>5000</code></td></tr>
+          </tbody>
+        </table>
+      </div>
 
-    <h2>Using the registry</h2>
-    <h3>Push an image</h3>
-    <ol>
-      <li>Create a group in the web UI (e.g. <code>myteam</code>).</li>
-      <li>Tag your image: <code>docker tag myimage localhost:5000/myteam/myimage:latest</code></li>
-      <li>Push: <code>docker push localhost:5000/myteam/myimage:latest</code></li>
-    </ol>
-    <p>If your registry is behind a domain, replace <code>localhost:5000</code> with your registry host (and configure Docker to trust it as an insecure registry or use HTTPS).</p>
-    <h3>Pull an image</h3>
-    <p><code>docker pull your-registry/myteam/myimage:latest</code></p>
-    <p>You can copy the exact <code>docker pull</code> command from the web UI for each tag.</p>
+      <h2 id="architecture">Architecture</h2>
+      <p>Refity consists of two services:</p>
+      <ul>
+        <li><strong>Backend (Go)</strong> — Port 5000. Serves the Docker Registry API (<code>/v2/*</code>) and a REST API for the web UI (<code>/api/*</code>). Uses a local driver for buffering during push, then uploads blobs and manifests to SFTP. Metadata (repos, tags, image sizes) is stored in SQLite.</li>
+        <li><strong>Frontend (React + Vite)</strong> — Port 8080. Web UI for login, dashboard, groups, repositories, and tag listing. Talks to the backend REST API with JWT.</li>
+      </ul>
+      <p><strong>Push flow:</strong> Docker client pushes layers and manifest to the backend. The backend writes layers to local temp storage (or streams in sync mode), then uploads to SFTP. Manifest is stored on SFTP by digest and by tag. Metadata is written to SQLite. Dashboard cache is invalidated so the UI reflects the new image.</p>
+      <p><strong>Pull flow:</strong> Docker client requests manifest and blobs. The backend reads from SFTP (and serves from local cache when available) and returns them. No SQLite involved for pull.</p>
 
-    <h2>More information</h2>
-    <p>For architecture, API details, and development setup, see the <a href="https://github.com/troke12/refity/blob/master/README.md" target="_blank" rel="noopener">README on GitHub</a>.</p>
+      <h2 id="usage">Using the registry</h2>
+      <h3>Push an image</h3>
+      <ol>
+        <li>Create a group in the web UI (e.g. <code>myteam</code>). Groups are not auto-created on push.</li>
+        <li>Tag your image: <code>docker tag myimage localhost:5000/myteam/myimage:latest</code></li>
+        <li>Push: <code>docker push localhost:5000/myteam/myimage:latest</code></li>
+      </ol>
+      <p>If your registry is behind a domain, replace <code>localhost:5000</code> with your registry host and configure Docker (insecure registry or HTTPS).</p>
+      <h3>Pull an image</h3>
+      <p><code>docker pull your-registry/myteam/myimage:latest</code></p>
+      <p>You can copy the exact <code>docker pull</code> command from the web UI for each tag.</p>
+      <h3>Delete tag or repository</h3>
+      <p>From the web UI you can delete a single tag or the entire repository. Deleting a repository removes its data from SQLite and deletes the repository folder on SFTP.</p>
+
+      <h2 id="security">Security</h2>
+      <ul>
+        <li><strong>JWT:</strong> Set <code>JWT_SECRET</code> in production. Do not use the default.</li>
+        <li><strong>CORS:</strong> Set <code>CORS_ORIGINS</code> to the exact origin(s) of your frontend.</li>
+        <li><strong>SFTP host key:</strong> Use <code>FTP_KNOWN_HOSTS</code> with a path to a <code>known_hosts</code> file to verify the SFTP server and avoid MITM.</li>
+        <li><strong>Credentials:</strong> Do not commit <code>.env</code>. Use secrets management or env injection in your deployment.</li>
+        <li><strong>TLS:</strong> In production, put the registry behind a reverse proxy (e.g. nginx, Caddy) with HTTPS. Configure Docker clients to trust the registry (insecure registry or valid TLS).</li>
+      </ul>
+
+      <h2 id="api">API reference</h2>
+      <h3>Docker Registry API v2</h3>
+      <p>Refity implements the standard <a href="https://docs.docker.com/registry/spec/api/" target="_blank" rel="noopener">Docker Registry HTTP API v2</a> under <code>/v2/</code>. All <code>docker push</code> and <code>docker pull</code> operations use this API. Authentication for the registry is not required by default; the web UI uses the separate REST API with JWT.</p>
+      <h3>REST API (web UI)</h3>
+      <p>All REST endpoints are under <code>/api/</code> and require a valid JWT in the <code>Authorization</code> header (except login).</p>
+      <ul>
+        <li><code>POST /api/auth/login</code> — Login with username/password; returns JWT.</li>
+        <li><code>GET /api/auth/me</code> — Current user (requires JWT).</li>
+        <li><code>PUT /api/auth/password</code> — Change password (requires JWT).</li>
+        <li><code>GET /api/dashboard</code> — Dashboard data (groups, total images, total size; optional FTP usage if enabled).</li>
+        <li><code>GET /api/groups</code> — List groups.</li>
+        <li><code>POST /api/groups</code> — Create group.</li>
+        <li><code>GET /api/groups/:group/repositories</code> — List repositories in a group (with tags).</li>
+        <li><code>GET /api/groups/:group/repositories/:repo/tags</code> — List tags for a repository.</li>
+        <li><code>DELETE /api/repositories/:name</code> — Delete a repository (name is <code>group/repo</code>).</li>
+        <li><code>DELETE /api/repositories/:name/tags/:tag</code> — Delete a tag.</li>
+        <li><code>GET /api/ftp/usage</code> — Hetzner Storage Box usage (only when <code>FTP_USAGE_ENABLED=true</code>).</li>
+      </ul>
+
+      <h2 id="faq">FAQ</h2>
+      <h3>Why SFTP and not S3?</h3>
+      <p>Refity is the only Docker registry that uses SFTP as the primary storage backend. That lets you use Hetzner Storage Box, existing SFTP servers, or NAS without adding S3/GCS. See <a href="compare.html">Why SFTP?</a> for a comparison with Harbor and Nexus.</p>
+      <h3>Does Refity support multi-architecture images?</h3>
+      <p>Yes. Manifest lists (multi-arch) are supported. Tag size in the UI is computed from the sum of layer sizes of the referenced manifests (compressed size).</p>
+      <h3>Can I use Refity without Hetzner?</h3>
+      <p>Yes. Any SFTP server works. Set <code>FTP_USAGE_ENABLED=false</code> (default) so the dashboard does not call the Hetzner API. The UI then shows only total images, total groups, and total size.</p>
+      <h3>Where are images stored on SFTP?</h3>
+      <p>Under <code>registry/&lt;group&gt;/&lt;repo&gt;/</code>: <code>blobs/</code> for layer blobs (by digest), and <code>manifests/</code> for manifest blobs (by digest and by tag).</p>
+      <h3>How do I backup my registry?</h3>
+      <p>Back up the SFTP storage (all blobs and manifests) and the SQLite database file (<code>refity.db</code>) if you want to preserve metadata. The database can be recreated from SFTP in principle, but backing both is simpler.</p>
+      <h3>More details?</h3>
+      <p>See the <a href="https://github.com/troke12/refity/blob/master/README.md" target="_blank" rel="noopener">README on GitHub</a> for architecture diagrams, development setup, and contribution guidelines.</p>
+    </div>
   </main>
 
   <footer class="footer">
@@ -102,6 +185,7 @@ cp .env.example .env</code></pre>
         </div>
         <div class="footer-links">
           <a href="index.html">Home</a>
+          <a href="compare.html">Why SFTP</a>
           <a href="features.html">Features</a>
           <a href="docs.html">Docs</a>
         </div>
@@ -115,5 +199,27 @@ cp .env.example .env</code></pre>
   </footer>
 
   <script src="script.js"></script>
+  <script>
+    (function() {
+      var toc = document.querySelector('.docs-toc');
+      if (!toc) return;
+      var links = toc.querySelectorAll('a[href^="#"]');
+      var ids = Array.prototype.map.call(links, function(a) { return a.getAttribute('href').slice(1); });
+      function updateActive() {
+        var scroll = window.scrollY;
+        var header = 80;
+        var current = ids.filter(function(id) {
+          var el = document.getElementById(id);
+          return el && el.getBoundingClientRect().top <= header + 50;
+        }).pop();
+        links.forEach(function(a) {
+          var href = a.getAttribute('href');
+          a.classList.toggle('active', href === '#' + current);
+        });
+      }
+      window.addEventListener('scroll', updateActive);
+      window.addEventListener('load', updateActive);
+    })();
+  </script>
 </body>
 </html>

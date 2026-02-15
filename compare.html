@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Why Refity uses SFTP: comparison with Harbor, Nexus, Docker Registry. The only container registry with SFTP backend storage." />
+  <meta property="og:title" content="Why SFTP? – Refity vs Harbor, Nexus" />
+  <meta property="og:description" content="Refity is the first Docker registry to use SFTP storage. See how it compares to Harbor, Nexus, and the standard registry." />
+  <title>Why SFTP? – Refity vs Harbor, Nexus</title>
+  <base href="/refity/" />
+  <link rel="canonical" href="https://troke.id/refity/compare.html" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230066CC'><path d='M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V6h4.17l2 2H20v10z'/></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a href="index.html" class="logo">
+        <i class="bi bi-box-seam"></i>
+        <span>Refity</span>
+      </a>
+      <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="compare.html" class="active">Why SFTP</a>
+        <a href="features.html">Features</a>
+        <a href="docs.html">Docs</a>
+        <a href="https://github.com/troke12/refity" target="_blank" rel="noopener" class="btn btn-outline">GitHub</a>
+      </nav>
+      <button class="nav-toggle" aria-label="Toggle menu" id="navToggle">
+        <i class="bi bi-list"></i>
+      </button>
+    </div>
+    <div class="nav-mobile" id="navMobile">
+      <a href="index.html">Home</a>
+      <a href="compare.html" class="active">Why SFTP</a>
+      <a href="features.html">Features</a>
+      <a href="docs.html">Docs</a>
+      <a href="https://github.com/troke12/refity" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="hero-inner">
+        <span class="badge badge-first">First in the world</span>
+        <h1>Why SFTP?</h1>
+        <p class="hero-lead">Every other Docker registry—Harbor, Nexus Repository, the official Distribution registry—stores blobs on local filesystem or cloud object storage (S3, GCS, Azure). Refity is the only one that uses SFTP.</p>
+      </div>
+    </section>
+
+    <section class="section section-alt">
+      <div class="container">
+        <h2 class="section-title">Storage backend comparison</h2>
+        <p class="section-lead">Refity is the only registry that backs your container images with SFTP. That means you can use Hetzner Storage Box, any VPS, or existing file storage without adopting a new storage API.</p>
+        <div class="comparison-wrap">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Refity</th>
+                <th>Harbor</th>
+                <th>Nexus Repository</th>
+                <th>Docker Registry (distribution)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>SFTP / SSH file storage</strong></td>
+                <td class="check">✓ Yes</td>
+                <td class="mute">—</td>
+                <td class="mute">—</td>
+                <td class="mute">—</td>
+              </tr>
+              <tr>
+                <td>Local filesystem</td>
+                <td class="mute">—</td>
+                <td class="check">✓</td>
+                <td class="check">✓</td>
+                <td class="check">✓</td>
+              </tr>
+              <tr>
+                <td>S3 / GCS / Azure blob</td>
+                <td class="mute">—</td>
+                <td class="check">✓</td>
+                <td class="check">✓</td>
+                <td class="check">✓ (via driver)</td>
+              </tr>
+              <tr>
+                <td>Docker Registry v2 API</td>
+                <td class="check">✓</td>
+                <td class="check">✓</td>
+                <td class="check">✓</td>
+                <td class="check">✓</td>
+              </tr>
+              <tr>
+                <td>Web UI for repos & tags</td>
+                <td class="check">✓</td>
+                <td class="check">✓</td>
+                <td class="check">✓</td>
+                <td class="mute">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="quote-block">
+          <p><strong>Refity is the first and only Docker registry that stores image layers and manifests on an SFTP server.</strong> No other open-source or commercial registry offers SFTP as a primary storage backend. If you want <code>docker push</code> and <code>docker pull</code> with data living on your SFTP (e.g. Hetzner Storage Box, your own server), Refity is the only option.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">When SFTP makes sense</h2>
+        <p class="section-lead">Use Refity when you want a Docker registry but your storage is SFTP—or when SFTP is the right fit.</p>
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon"><i class="bi bi-server"></i></div>
+            <h3>Hetzner Storage Box</h3>
+            <p>Storage Box is SFTP-based. Refity plugs in directly. Optional dashboard shows usage from the Hetzner API.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><i class="bi bi-hdd"></i></div>
+            <h3>Existing SFTP or NAS</h3>
+            <p>You already have an SFTP server or NAS that exposes SFTP. Use it as the backend without adding S3 or another storage layer.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><i class="bi bi-shield-check"></i></div>
+            <h3>Simpler ops</h3>
+            <p>No object-storage credentials or buckets. One SSH/SFTP account, standard file access, backups with familiar tools.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon"><i class="bi bi-lock"></i></div>
+            <h3>Air-gapped / restricted</h3>
+            <p>Environments where only SSH/SFTP is allowed can still run a full Docker registry with Refity.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section cta-section section-alt">
+      <div class="container">
+        <h2 class="section-title">Try Refity</h2>
+        <p class="section-lead">Clone, set your SFTP credentials, and run with Docker Compose.</p>
+        <a href="docs.html" class="btn btn-primary btn-lg">Read the docs</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <i class="bi bi-box-seam"></i>
+          <span>Refity</span>
+        </div>
+        <div class="footer-links">
+          <a href="index.html">Home</a>
+          <a href="compare.html">Why SFTP</a>
+          <a href="features.html">Features</a>
+          <a href="docs.html">Docs</a>
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/troke12/refity" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/troke12/refity/blob/master/README.md" target="_blank" rel="noopener">README</a>
+        </div>
+      </div>
+      <p class="footer-copy">&copy; 2025 Refity. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
