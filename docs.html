@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Refity documentation: installation with Docker Compose, environment configuration, quick start, and usage." />
+  <meta property="og:title" content="Docs – Refity" />
+  <meta property="og:description" content="Install Refity with Docker Compose. Configure SFTP, JWT, and optional Hetzner usage." />
+  <title>Docs – Refity</title>
+  <base href="/refity/" />
+  <link rel="canonical" href="https://troke.id/refity/docs.html" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230066CC'><path d='M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V6h4.17l2 2H20v10z'/></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <a href="index.html" class="logo">
+        <i class="bi bi-box-seam"></i>
+        <span>Refity</span>
+      </a>
+      <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="features.html">Features</a>
+        <a href="docs.html" class="active">Docs</a>
+        <a href="https://github.com/troke12/refity" target="_blank" rel="noopener" class="btn btn-outline">GitHub</a>
+      </nav>
+      <button class="nav-toggle" aria-label="Toggle menu" id="navToggle">
+        <i class="bi bi-list"></i>
+      </button>
+    </div>
+    <div class="nav-mobile" id="navMobile">
+      <a href="index.html">Home</a>
+      <a href="features.html">Features</a>
+      <a href="docs.html" class="active">Docs</a>
+      <a href="https://github.com/troke12/refity" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </header>
+
+  <main class="page-content">
+    <h1>Documentation</h1>
+    <p>Install and configure Refity to run your own Docker private registry with SFTP storage.</p>
+
+    <h2>Requirements</h2>
+    <ul>
+      <li>Docker and Docker Compose</li>
+      <li>An SFTP server (e.g. Hetzner Storage Box, VPS with SSH/SFTP, or any SFTP-compatible storage)</li>
+    </ul>
+
+    <h2>Quick start</h2>
+    <ol>
+      <li>Clone the repository and copy the example env file:</li>
+    </ol>
+    <pre class="code-block"><code>git clone https://github.com/troke12/refity.git
+cd refity
+cp .env.example .env</code></pre>
+    <ol start="2">
+      <li>Edit <code>.env</code> and set your SFTP credentials: <code>FTP_HOST</code>, <code>FTP_PORT</code>, <code>FTP_USERNAME</code>, <code>FTP_PASSWORD</code>. For production, set <code>JWT_SECRET</code>.</li>
+      <li>Start the stack:</li>
+    </ol>
+    <pre class="code-block"><code>docker-compose up -d</code></pre>
+    <p>Open <strong>http://localhost:8080</strong> for the web UI. Default login: <code>admin</code> / <code>admin</code>. Change the password after first login.</p>
+    <p>The registry API is on port <strong>5000</strong>. Use it as an insecure registry or with TLS in front (e.g. reverse proxy).</p>
+
+    <h2>Environment variables</h2>
+    <p>Key variables (see <code>.env.example</code> in the repo for the full list):</p>
+    <ul>
+      <li><strong>FTP_HOST</strong>, <strong>FTP_PORT</strong>, <strong>FTP_USERNAME</strong>, <strong>FTP_PASSWORD</strong> – Required. Your SFTP server connection details.</li>
+      <li><strong>JWT_SECRET</strong> – Required in production. Use a long random string for signing tokens.</li>
+      <li><strong>CORS_ORIGINS</strong> – Comma-separated allowed origins for the API (e.g. your frontend URL).</li>
+      <li><strong>SFTP_SYNC_UPLOAD</strong> – Set to <code>true</code> if you want uploads to complete before the push response (slower but files are on SFTP when push finishes). Default: <code>false</code> (async).</li>
+      <li><strong>FTP_USAGE_ENABLED</strong> – Set to <code>true</code> only if you use Hetzner Storage Box and want the usage card on the dashboard. Default: <code>false</code>.</li>
+      <li><strong>HCLOUD_TOKEN</strong>, <strong>HETZNER_BOX_ID</strong> – Only needed when <code>FTP_USAGE_ENABLED=true</code>.</li>
+    </ul>
+
+    <h2>Using the registry</h2>
+    <h3>Push an image</h3>
+    <ol>
+      <li>Create a group in the web UI (e.g. <code>myteam</code>).</li>
+      <li>Tag your image: <code>docker tag myimage localhost:5000/myteam/myimage:latest</code></li>
+      <li>Push: <code>docker push localhost:5000/myteam/myimage:latest</code></li>
+    </ol>
+    <p>If your registry is behind a domain, replace <code>localhost:5000</code> with your registry host (and configure Docker to trust it as an insecure registry or use HTTPS).</p>
+    <h3>Pull an image</h3>
+    <p><code>docker pull your-registry/myteam/myimage:latest</code></p>
+    <p>You can copy the exact <code>docker pull</code> command from the web UI for each tag.</p>
+
+    <h2>More information</h2>
+    <p>For architecture, API details, and development setup, see the <a href="https://github.com/troke12/refity/blob/master/README.md" target="_blank" rel="noopener">README on GitHub</a>.</p>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <i class="bi bi-box-seam"></i>
+          <span>Refity</span>
+        </div>
+        <div class="footer-links">
+          <a href="index.html">Home</a>
+          <a href="features.html">Features</a>
+          <a href="docs.html">Docs</a>
+        </div>
+        <div class="footer-links">
+          <a href="https://github.com/troke12/refity" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/troke12/refity/blob/master/README.md" target="_blank" rel="noopener">README</a>
+        </div>
+      </div>
+      <p class="footer-copy">&copy; 2025 Refity. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
