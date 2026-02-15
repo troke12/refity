@@ -594,14 +594,17 @@ func (d *Database) GetGroups() ([]string, error) {
 	return groups, nil
 }
 
-// GetRepositoriesByGroup returns all repositories (images) that belong to a specific group
+// GetRepositoriesByGroup returns all repositories that belong to a group: from images
+// and from repositories table, so a repo still appears after all its tags are deleted.
 func (d *Database) GetRepositoriesByGroup(groupName string) ([]string, error) {
+	pattern := groupName + "/%"
 	rows, err := d.db.Query(`
-		SELECT DISTINCT name
-		FROM images
-		WHERE name LIKE ? || '/%'
-		ORDER BY name
-	`, groupName)
+		SELECT DISTINCT name FROM (
+			SELECT name FROM images WHERE name LIKE ?
+			UNION
+			SELECT name FROM repositories WHERE name LIKE ?
+		) ORDER BY name
+	`, pattern, pattern)
 	if err != nil {
 		return nil, err
 	}

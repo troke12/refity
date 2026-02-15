@@ -464,6 +464,10 @@ func (h *APIHandler) GetRepositoriesByGroupHandler(w http.ResponseWriter, r *htt
 		var tags []Tag
 		var totalSize int64
 		for _, img := range images {
+			// Only show actual tags, not digest-named entries (sha256:...)
+			if strings.HasPrefix(img.Tag, "sha256:") {
+				continue
+			}
 			tags = append(tags, Tag{
 				Name:      img.Tag,
 				Size:      img.Size,
@@ -532,6 +536,10 @@ func (h *APIHandler) GetTagsByRepositoryHandler(w http.ResponseWriter, r *http.R
 
 	var tags []Tag
 	for _, img := range images {
+		// Only show actual tags, not digest-named entries (sha256:...)
+		if strings.HasPrefix(img.Tag, "sha256:") {
+			continue
+		}
 		tags = append(tags, Tag{
 			Name:      img.Tag,
 			Size:      img.Size,

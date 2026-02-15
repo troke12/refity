@@ -756,7 +756,7 @@ func handleTagsList(w http.ResponseWriter, path string) {
 	}
 	manifestDir := "registry/" + repo + "/manifests"
 	manifestDir = strings.TrimLeft(manifestDir, "/")
-	tags, err := sftpDriver.List(context.TODO(), manifestDir)
+	allEntries, err := sftpDriver.List(context.TODO(), manifestDir)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		resp := map[string]interface{}{
@@ -766,6 +766,13 @@ func handleTagsList(w http.ResponseWriter, path string) {
 		}
 		json.NewEncoder(w).Encode(resp)
 		return
+	}
+	// Only return actual tag names; exclude digest-named manifest files (sha256:...)
+	tags := make([]string, 0, len(allEntries))
+	for _, e := range allEntries {
+		if !strings.HasPrefix(e, "sha256:") {
+			tags = append(tags, e)
+		}
 	}
 	resp := map[string]interface{}{
 		"name": repo,
