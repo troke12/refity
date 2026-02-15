@@ -181,3 +181,22 @@
   border-left: 4px solid #38ef7d;
 }
 
+@media (max-width: 576px) {
+  .modal-body {
+    padding: 1.25rem;
+  }
+
+  .modal-footer {
+    padding: 1rem 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .modal-header {
+    padding: 1.25rem 1rem;
+  }
+
+  .modal-title {
+    font-size: 1.25rem;
+  }
+}
+

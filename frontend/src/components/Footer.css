@@ -29,19 +29,20 @@
   font-size: 0.8125rem;
 }
 
-/* Mobile Responsive */
-@media (max-width: 768px) {
+/* Tablet & Mobile */
+@media (max-width: 991px) {
+  .footer-content {
+    padding: 0 var(--container-padding-mobile);
+  }
+}
+
+@media (max-width: 576px) {
   .app-footer {
     padding: 0.375rem 0;
   }
 
   .footer-content {
-    justify-content: flex-start;
-    padding: 0 var(--container-padding-mobile);
-  }
-
-  .footer-left {
-    justify-content: flex-start;
+    padding: 0 var(--container-padding-xs);
   }
 
   .footer-text {

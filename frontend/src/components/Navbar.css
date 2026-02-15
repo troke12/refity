@@ -13,7 +13,7 @@
   max-width: var(--container-max-width);
   width: 100%;
   margin: 0 auto;
-  padding: 0;
+  padding: 0 var(--container-padding);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -107,10 +107,13 @@ a.btn-nav {
   background: transparent;
   border: none;
   color: white;
+  min-width: 48px;
+  min-height: 48px;
   padding: 0.5rem 0.75rem;
   cursor: pointer;
   border-radius: 0;
   transition: var(--transition);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .navbar-toggle:hover,
@@ -133,18 +136,19 @@ a.btn-nav {
   padding: 0;
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.3s ease;
+  transition: max-height 0.25s ease;
 }
 
 .navbar-menu-mobile.open {
-  max-height: 300px;
+  max-height: 320px;
 }
 
 .btn-nav-mobile {
   border-radius: 0;
+  min-height: 48px;
   padding: 0.875rem 1rem;
   font-weight: 500;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   transition: var(--transition);
   border: none;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -156,6 +160,7 @@ a.btn-nav {
   gap: 0.75rem;
   cursor: pointer;
   width: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn-nav-mobile:hover:not(:disabled) {
@@ -178,18 +183,16 @@ a.btn-nav-mobile {
   width: 20px;
 }
 
-/* Mobile Responsive */
-@media (max-width: 768px) {
+/* Tablet: show hamburger menu */
+@media (max-width: 991px) {
   .navbar-container {
     min-height: 56px;
-    padding: 0;
-    position: relative;
+    padding: 0 var(--container-padding-mobile);
   }
 
   .navbar-brand {
     font-size: 1rem;
     flex-shrink: 0;
-    padding-left: var(--container-padding-mobile);
   }
 
   .navbar-brand i {
@@ -209,9 +212,10 @@ a.btn-nav-mobile {
   }
 
   .navbar-toggle {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
-    padding-right: var(--container-padding-mobile);
   }
 
   .navbar-menu-mobile {
@@ -219,12 +223,24 @@ a.btn-nav-mobile {
   }
 }
 
+/* Mobile */
 @media (max-width: 576px) {
   .navbar-container {
     min-height: 52px;
+    padding: 0 var(--container-padding-xs);
   }
 
   .navbar-brand {
     font-size: 0.95rem;
+  }
+
+  .navbar-title-mobile {
+    font-size: 0.9375rem;
+    margin: 0 0.25rem;
+  }
+
+  .btn-nav-mobile {
+    padding: 0.875rem 1rem;
+    min-height: 44px;
   }
 }

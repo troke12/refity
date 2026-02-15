@@ -153,20 +153,20 @@ function RepositoryPage() {
                   <tbody>
                     {data.tags.map((tag) => (
                       <tr key={tag.name}>
-                        <td>
+                        <td data-label="Tag">
                           <span className="badge bg-primary">
                             <i className="bi bi-tag me-1"></i>
                             {tag.name}
                           </span>
                         </td>
-                        <td>{formatBytes(tag.size)}</td>
-                        <td>
+                        <td data-label="Size">{formatBytes(tag.size)}</td>
+                        <td data-label="Date Created">
                           <small className="text-muted">
                             <i className="bi bi-calendar3 me-1"></i>
                             {formatDate(tag.created_at)}
                           </small>
                         </td>
-                        <td>
+                        <td data-label="Docker pull">
                           <div className="docker-pull-cell">
                             <code className="docker-pull-row-cmd">{getDockerPullCmd(tag.name)}</code>
                             <button
@@ -180,7 +180,7 @@ function RepositoryPage() {
                             </button>
                           </div>
                         </td>
-                        <td>
+                        <td data-label="Actions">
                           <button
                             onClick={() => handleDeleteTag(tag.name)}
                             className="btn btn-sm btn-danger"

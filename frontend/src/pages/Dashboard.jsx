@@ -89,8 +89,8 @@ function Dashboard() {
 
       <div className="container-fluid px-0">
         <div className="stats-section">
-          <div className="row g-3">
-            <div className={`col-sm-6 ${ftpUsageEnabled ? 'col-md-2' : 'col-md-4'}`}>
+          <div className="row g-3 stats-row">
+            <div className={`col-12 col-sm-6 ${ftpUsageEnabled ? 'col-lg-2' : 'col-md-4'}`}>
               <StatCard
                 icon="bi-images"
                 label="Total Images"
@@ -98,7 +98,7 @@ function Dashboard() {
                 gradient="primary"
               />
             </div>
-            <div className={`col-sm-6 ${ftpUsageEnabled ? 'col-md-2' : 'col-md-4'}`}>
+            <div className={`col-12 col-sm-6 ${ftpUsageEnabled ? 'col-lg-2' : 'col-md-4'}`}>
               <StatCard
                 icon="bi-folder"
                 label="Total Groups"
@@ -106,7 +106,7 @@ function Dashboard() {
                 gradient="success"
               />
             </div>
-            <div className={`col-sm-6 ${ftpUsageEnabled ? 'col-md-3' : 'col-md-4'}`}>
+            <div className={`col-12 col-sm-6 ${ftpUsageEnabled ? 'col-lg-3' : 'col-md-4'}`}>
               <StatCard
                 icon="bi-hdd"
                 label="Total Size"
@@ -115,7 +115,7 @@ function Dashboard() {
               />
             </div>
             {ftpUsageEnabled && (
-              <div className="col-md-5 col-sm-6">
+              <div className="col-12 col-sm-6 col-lg-5">
                 <StatCard
                   icon="bi-server"
                   label="FTP Usage"
@@ -148,9 +148,9 @@ function Dashboard() {
           </div>
           <div className="card-body">
             {data?.groups && data.groups.length > 0 ? (
-              <div className="row g-2">
+              <div className="row g-3">
                 {data.groups.map((group) => (
-                  <div key={group.name} className="col-md-3 col-sm-6">
+                  <div key={group.name} className="col-12 col-sm-6 col-lg-3">
                     <Link
                       to={`/group/${encodeURIComponent(group.name)}`}
                       className="text-decoration-none"

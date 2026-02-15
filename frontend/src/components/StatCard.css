@@ -115,21 +115,14 @@
   }
 }
 
-/* Mobile Responsive */
-@media (max-width: 768px) {
+/* Tablet */
+@media (max-width: 991px) {
   .stat-card .card-body {
-    padding: 1rem;
-  }
-
-  .stat-icon {
-    width: 40px;
-    height: 40px;
-    font-size: 1.25rem;
-    margin-right: 0.75rem;
+    padding: 0.875rem 1rem;
   }
 
   .stat-value {
-    font-size: 1.5rem;
+    font-size: 1.375rem;
   }
 
   .stat-label {
@@ -137,18 +130,24 @@
   }
 }
 
+/* Mobile */
 @media (max-width: 576px) {
   .stat-card .card-body {
-    padding: 0.875rem;
+    padding: 0.75rem 0.875rem;
   }
 
   .stat-icon {
     width: 36px;
     height: 36px;
     font-size: 1.125rem;
+    margin-right: 0.5rem;
   }
 
   .stat-value {
     font-size: 1.25rem;
+  }
+
+  .stat-label {
+    font-size: 0.65rem;
   }
 }

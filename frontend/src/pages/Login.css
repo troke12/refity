@@ -182,7 +182,11 @@
 }
 
 /* Mobile Responsive */
-@media (max-width: 768px) {
+@media (max-width: 991px) {
+  .login-container {
+    padding: var(--container-padding-mobile);
+  }
+
   .login-card {
     padding: 2rem 1.5rem;
   }
@@ -215,7 +219,7 @@
 
 @media (max-width: 576px) {
   .login-container {
-    padding: var(--container-padding-mobile);
+    padding: var(--container-padding-xs);
   }
 
   .login-card {

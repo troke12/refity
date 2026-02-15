@@ -28,7 +28,8 @@
   /* Container */
   --container-max-width: 1200px;
   --container-padding: 2rem;
-  --container-padding-mobile: 1.25rem;
+  --container-padding-mobile: 1rem;
+  --container-padding-xs: 0.75rem;
   
   /* Transitions */
   --transition: all 0.2s ease;
@@ -69,8 +70,15 @@ body {
   background: var(--docker-gray-light);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 991px) {
   :root {
     --container-padding: var(--container-padding-mobile);
+  }
+}
+
+@media (max-width: 576px) {
+  :root {
+    --container-padding: var(--container-padding-xs);
+    --container-padding-mobile: var(--container-padding-xs);
   }
 }

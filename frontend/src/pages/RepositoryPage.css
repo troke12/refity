@@ -233,8 +233,8 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* Mobile Responsive */
-@media (max-width: 768px) {
+/* Tablet & Mobile: tag list as cards */
+@media (max-width: 991px) {
   .container-main > .container-fluid {
     padding: var(--container-padding-mobile);
   }
@@ -249,8 +249,10 @@
   }
 
   .nav-link-back {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
     padding: 0;
   }
 
@@ -258,42 +260,132 @@
     font-size: 0.875rem;
   }
 
-  .table {
-    font-size: 0.875rem;
+  .table-responsive {
+    overflow-x: visible;
+    margin: 0 -0.25rem;
   }
 
-  .table thead th {
-    padding: 0.75rem 0.5rem;
-    font-size: 0.7rem;
+  .table thead {
+    display: none;
+  }
+
+  .table,
+  .table tbody,
+  .table tr,
+  .table td {
+    display: block;
+  }
+
+  .table tbody tr {
+    border: 1px solid var(--docker-border);
+    border-radius: 0;
+    margin-bottom: 0.75rem;
+    padding: 1rem;
+    background: white;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .table tbody tr:hover {
+    background: white;
+    border-color: var(--docker-blue-light);
   }
 
   .table tbody td {
-    padding: 0.75rem 0.5rem;
+    padding: 0.5rem 0;
+    border: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
-  .table-responsive {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+  .table tbody td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--docker-text-light);
+    min-width: 5rem;
+    flex-shrink: 0;
+  }
+
+  .table tbody td[data-label="Tag"] {
+    padding-top: 0;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--docker-gray);
+  }
+
+  .table tbody td[data-label="Tag"]::before {
+    display: none;
+  }
+
+  .table tbody td[data-label="Docker pull"] {
+    align-items: flex-start;
+  }
+
+  .table tbody td[data-label="Docker pull"] .docker-pull-cell {
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .table tbody td[data-label="Docker pull"] .docker-pull-row-cmd {
+    white-space: normal;
+    word-break: break-all;
+    font-size: 0.75rem;
+    padding: 0.5rem;
+    background: var(--docker-gray-light);
+    border: 1px solid var(--docker-border);
+  }
+
+  .table tbody td[data-label="Actions"] {
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--docker-gray);
+    justify-content: flex-end;
+  }
+
+  .table tbody td[data-label="Actions"] .btn {
+    min-height: 40px;
+    min-width: 44px;
+  }
+
+  .table tbody td[data-label="Docker pull"] .btn {
+    min-height: 40px;
   }
 }
 
 @media (max-width: 576px) {
+  .container-main > .container-fluid {
+    padding: var(--container-padding-xs);
+  }
+
+  .card-header,
+  .card-body {
+    padding: 0.875rem;
+  }
+
   .card-header-title {
     gap: 0.5rem;
   }
 
   .card-header h5 {
     font-size: 0.9375rem;
+    flex-wrap: wrap;
   }
 
-  .table thead th,
-  .table tbody td {
-    padding: 0.5rem 0.25rem;
-    font-size: 0.75rem;
+  .table tbody tr {
+    padding: 0.875rem;
+  }
+
+  .table tbody td::before {
+    min-width: 4rem;
+    font-size: 0.65rem;
   }
 
   .badge {
-    padding: 0.2rem 0.5rem;
-    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.8125rem;
   }
 }

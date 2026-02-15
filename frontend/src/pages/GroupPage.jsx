@@ -102,7 +102,7 @@ function GroupPage() {
                   const totalSize = tags.reduce((sum, tag) => sum + (tag?.size ?? 0), 0);
                   const fullRepoName = `${data.group}/${repo.name}`;
                   return (
-                    <div key={fullRepoName} className="col-md-4">
+                    <div key={fullRepoName} className="col-12 col-sm-6 col-lg-4">
                       <div className="card h-100 repository-card">
                         <div className="card-body d-flex justify-content-between align-items-start">
                           <Link
