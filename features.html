@@ -3,18 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="Refity features: the only Docker registry with SFTP storage, Docker v2 API, web UI, JWT auth, multi-arch, easy deploy." />
-  <meta property="og:title" content="Features – Refity" />
-  <meta property="og:description" content="The only registry with SFTP backend. Docker v2, web UI, JWT, multi-arch. First in the world." />
-  <title>Features – Refity</title>
-  <base href="/refity/" />
+  <title>Refity Features – SFTP Backend, Docker v2 API, Web UI, JWT Auth</title>
+  <meta name="description" content="Refity features: SFTP backend for Docker registry, Docker v2 API, web UI, JWT auth, multi-architecture, Hetzner Storage Box support. The only private registry with SFTP storage." />
+  <meta name="keywords" content="Refity features, Docker registry features, SFTP registry, private registry features, Docker v2 API, JWT registry" />
+  <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://troke.id/refity/features.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="https://troke.id/refity/features.html" />
+  <meta property="og:title" content="Refity Features – SFTP, Docker v2, Web UI" />
+  <meta property="og:description" content="The only Docker registry with SFTP backend. Docker v2 API, web UI, JWT, multi-arch." />
+  <meta property="og:locale" content="en_US" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Refity Features" />
+  <meta name="twitter:description" content="Docker registry with SFTP storage, Docker v2, web UI, JWT." />
+  <base href="/refity/" />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%230066CC'><path d='M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V6h4.17l2 2H20v10z'/></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Refity","item":"https://troke.id/refity/"},{"@type":"ListItem","position":2,"name":"Features","item":"https://troke.id/refity/features.html"}]}
+  </script>
 </head>
 <body>
   <header class="header">
@@ -61,7 +72,7 @@
             <p>All image blobs and manifests are stored on your SFTP server. Use Hetzner Storage Box, any VPS, or existing file storage. No proprietary lock-in.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon"><i class="bi bi-docker"></i></div>
+            <div class="feature-icon"><i class="bi bi-box"></i></div>
             <h3>Docker Registry v2 API</h3>
             <p>Fully compatible with the Docker Registry HTTP API v2. Works with <code>docker push</code>, <code>docker pull</code>, and standard Docker CLI and CI tools.</p>
           </div>
@@ -110,23 +121,18 @@
 
   <footer class="footer">
     <div class="footer-inner">
-      <div class="footer-grid">
-        <div class="footer-brand">
-          <i class="bi bi-box-seam"></i>
-          <span>Refity</span>
-        </div>
-        <div class="footer-links">
-          <a href="index.html">Home</a>
-          <a href="compare.html">Why SFTP</a>
-          <a href="features.html">Features</a>
-          <a href="docs.html">Docs</a>
-        </div>
-        <div class="footer-links">
-          <a href="https://github.com/troke12/refity" target="_blank" rel="noopener">GitHub</a>
-          <a href="https://github.com/troke12/refity/blob/master/README.md" target="_blank" rel="noopener">README</a>
-        </div>
+      <a href="index.html" class="footer-brand">
+        <i class="bi bi-box-seam"></i>
+        <span>Refity</span>
+      </a>
+      <div class="footer-links">
+        <a href="index.html">Home</a>
+        <a href="compare.html">Why SFTP</a>
+        <a href="features.html">Features</a>
+        <a href="docs.html">Docs</a>
+        <a href="https://github.com/troke12/refity" target="_blank" rel="noopener">GitHub</a>
       </div>
-      <p class="footer-copy">&copy; 2025 Refity. All rights reserved.</p>
+      <p class="footer-copy">&copy; 2025</p>
     </div>
   </footer>
 
