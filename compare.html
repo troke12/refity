@@ -109,6 +109,102 @@
         <div class="quote-block">
           <p><strong>Refity is the first and only Docker registry that stores image layers and manifests on an SFTP server.</strong> No other open-source or commercial registry offers SFTP as a primary storage backend. If you want <code>docker push</code> and <code>docker pull</code> with data living on your SFTP (e.g. Hetzner Storage Box, your own server), Refity is the only option.</p>
         </div>
+
+        <h2 class="section-title" style="margin-top: 3rem;">System requirements</h2>
+        <p class="section-lead">Refity keeps compute and local disk minimal because image data lives on SFTP. Harbor and Nexus need more RAM and disk for their stack and local/blob storage.</p>
+        <div class="comparison-wrap">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Resource</th>
+                <th>Refity</th>
+                <th>Harbor</th>
+                <th>Nexus Repository</th>
+                <th>Docker Registry</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>CPU (min)</strong></td>
+                <td>1 core</td>
+                <td>2 cores</td>
+                <td>2 cores</td>
+                <td>1 core</td>
+              </tr>
+              <tr>
+                <td><strong>RAM (min)</strong></td>
+                <td>512 MB – 1 GB</td>
+                <td>4 GB</td>
+                <td>8 GB</td>
+                <td>~512 MB – 1 GB</td>
+              </tr>
+              <tr>
+                <td><strong>Local disk</strong></td>
+                <td>5–10 GB (temp + SQLite)</td>
+                <td>40 GB (min) – 160 GB (rec.)</td>
+                <td>20–200+ GB (app + blobs or DB)</td>
+                <td>Varies (or use S3)</td>
+              </tr>
+              <tr>
+                <td><strong>Image storage</strong></td>
+                <td>On SFTP (separate)</td>
+                <td>Local or S3/GCS/Azure</td>
+                <td>Local or S3/GCS/Azure</td>
+                <td>Local or driver (S3, etc.)</td>
+              </tr>
+              <tr>
+                <td><strong>Database</strong></td>
+                <td>SQLite (embedded)</td>
+                <td>PostgreSQL (optional)</td>
+                <td>H2 (small) or PostgreSQL</td>
+                <td>None (stateless)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="quick-start-note" style="margin-top: 0.5rem;">Sources: <a href="https://goharbor.io/docs/latest/install-config/installation-prereqs/" target="_blank" rel="noopener">Harbor prerequisites</a>, <a href="https://help.sonatype.com/repomanager3/installation/system-requirements" target="_blank" rel="noopener">Nexus Repository system requirements</a>. Refity and Docker Registry: lightweight single-process; Refity metadata in SQLite.</p>
+
+        <h2 class="section-title" style="margin-top: 3rem;">Typical cost (self‑hosted)</h2>
+        <p class="section-lead">Rough monthly cost for a small team. Software is free (open source); you pay for compute and storage. Refity separates compute (small) from storage (SFTP), so you can use cheap SFTP (e.g. Hetzner) and a tiny VPS.</p>
+        <div class="comparison-wrap">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Solution</th>
+                <th>Compute (VM/VPS)</th>
+                <th>Storage</th>
+                <th>Rough total / month</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Refity</strong></td>
+                <td>Small VPS (1 vCPU, 1 GB RAM) ~€4–6</td>
+                <td>SFTP only, e.g. Hetzner Storage Box 1 TB ~€3.50</td>
+                <td><strong>~€8–10</strong> (1 TB)</td>
+              </tr>
+              <tr>
+                <td><strong>Harbor</strong></td>
+                <td>VM (2–4 CPU, 4–8 GB RAM) ~€15–35</td>
+                <td>40–160 GB local or S3/GCS</td>
+                <td>~€20–50+ (depends on disk/object storage)</td>
+              </tr>
+              <tr>
+                <td><strong>Nexus Repository</strong></td>
+                <td>VM (2+ CPU, 8 GB RAM) ~€20–40</td>
+                <td>Local or S3; PostgreSQL if prod</td>
+                <td>~€25–60+ (OSS); Pro is paid license</td>
+              </tr>
+              <tr>
+                <td><strong>Docker Registry</strong></td>
+                <td>Minimal VM ~€4–8</td>
+                <td>Local or S3 (you pay)</td>
+                <td>~€5–30+ (depends on storage)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="quick-start-note" style="margin-top: 0.5rem;">Prices are illustrative (EU VPS and <a href="https://www.hetzner.com/storage/storage-box" target="_blank" rel="noopener">Hetzner Storage Box</a>). Refity: no license fee; you only pay for a small server + SFTP storage. With Hetzner BX21 (5 TB) ~€11/mo + same small VPS, total stays ~€15–17/mo for 5 TB.</p>
       </div>
     </section>
 
