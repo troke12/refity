@@ -1,19 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { dashboardAPI, ftpAPI } from '../services/api';
 import { formatBytes } from '../utils/formatBytes';
 import { formatTB } from '../utils/formatTB';
 
-// Helper to format FTP usage - show GB for used, TB for total
-const formatFTPUsage = (usedBytes, totalTB) => {
-  if (!usedBytes && usedBytes !== 0) return 'N/A';
-  
-  // Convert bytes to GB for used size
-  const usedGB = usedBytes / (1024 * 1024 * 1024);
-  
-  // Format: "16.39 GB / 1.00 TB"
-  return `${usedGB.toFixed(2)} GB / ${formatTB(totalTB)}`;
-};
 import StatCard from '../components/StatCard';
 import CreateGroupModal from '../components/CreateGroupModal';
 import Navbar from '../components/Navbar';
@@ -23,6 +13,8 @@ import './Dashboard.css';
 function Dashboard() {
   const [data, setData] = useState(null);
   const [ftpUsage, setFtpUsage] = useState(null);
+  const [ftpUsageEnabled, setFtpUsageEnabled] = useState(true); // false when backend returns enabled: false (e.g. not using Hetzner)
+  const ftpIntervalRef = useRef(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showCreateGroupModal, setShowCreateGroupModal] = useState(false);
@@ -40,8 +32,17 @@ function Dashboard() {
   };
 
   const loadFTPUsage = async () => {
+    if (!ftpUsageEnabled) return;
     try {
       const usage = await ftpAPI.getUsage();
+      if (usage && usage.enabled === false) {
+        setFtpUsageEnabled(false);
+        if (ftpIntervalRef.current) {
+          clearInterval(ftpIntervalRef.current);
+          ftpIntervalRef.current = null;
+        }
+        return;
+      }
       if (usage && usage.error) {
         setFtpUsage(null);
       } else {
@@ -55,14 +56,9 @@ function Dashboard() {
   useEffect(() => {
     loadData();
     loadFTPUsage();
-    
-    // Poll FTP usage every 2 minutes (backend cache is 5 minutes, so this is safe)
-    const ftpInterval = setInterval(() => {
-      loadFTPUsage();
-    }, 2 * 60 * 1000); // 2 minutes
-    
+    ftpIntervalRef.current = setInterval(loadFTPUsage, 2 * 60 * 1000);
     return () => {
-      clearInterval(ftpInterval);
+      if (ftpIntervalRef.current) clearInterval(ftpIntervalRef.current);
     };
   }, []);
 
@@ -110,7 +106,7 @@ function Dashboard() {
                 gradient="success"
               />
             </div>
-            <div className="col-md-3 col-sm-6">
+            <div className={`col-sm-6 ${ftpUsageEnabled ? 'col-md-3' : 'col-md-4'}`}>
               <StatCard
                 icon="bi-hdd"
                 label="Total Size"
@@ -118,14 +114,16 @@ function Dashboard() {
                 gradient="warning"
               />
             </div>
-            <div className="col-md-5 col-sm-6">
-              <StatCard
-                icon="bi-server"
-                label="FTP Usage"
-                value={ftpUsage ? `${formatBytes(ftpUsage.used_size)} / ${formatTB(ftpUsage.total_size_tb)}` : 'N/A'}
-                gradient="primary"
-              />
-            </div>
+            {ftpUsageEnabled && (
+              <div className="col-md-5 col-sm-6">
+                <StatCard
+                  icon="bi-server"
+                  label="FTP Usage"
+                  value={ftpUsage ? `${formatBytes(ftpUsage.used_size)} / ${formatTB(ftpUsage.total_size_tb)}` : 'N/A'}
+                  gradient="primary"
+                />
+              </div>
+            )}
           </div>
         </div>
 

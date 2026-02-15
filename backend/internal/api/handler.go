@@ -577,6 +577,13 @@ func (h *APIHandler) FTPUsageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// FTP usage (Hetzner Storage Box) can be disabled for non-Hetzner deployments
+	if !h.config.EnableFTPUsage {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"enabled": false})
+		return
+	}
+
 	// Check if Hetzner config is available
 	if h.config.HetznerToken == "" || h.config.HetznerBoxID == 0 {
 		log.Printf("Hetzner config not available")

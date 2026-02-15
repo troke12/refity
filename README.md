@@ -154,6 +154,8 @@ FTP_PASSWORD=sftppass
 
 **Optional:** `SFTP_SYNC_UPLOAD=true` — upload to SFTP before responding so files are on FTP as soon as push completes. Default `false` (async upload in background).
 
+**FTP Usage (Hetzner):** By default the "FTP Usage" card is hidden. The dashboard shows **Total Images**, **Total Groups**, and **Total Size** only. If you use Hetzner Storage Box and want the usage card, set `FTP_USAGE_ENABLED=true` and configure `HCLOUD_TOKEN` and `HETZNER_BOX_ID` in `.env`.
+
 **Note**: Default admin user is created automatically:
 - Username: `admin`
 - Password: `admin`
