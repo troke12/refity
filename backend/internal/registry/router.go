@@ -10,12 +10,14 @@ import (
 
 var (
 	localDriver local.StorageDriver
-	sftpDriver sftp.StorageDriver
-	db         *database.Database
+	sftpDriver  sftp.StorageDriver
+	db          *database.Database
+	cfg         *config.Config
 )
 
 func NewRouterWithDeps(localD local.StorageDriver, sftpD sftp.StorageDriver, c *config.Config, database *database.Database) http.Handler {
 	localDriver = localD
+	cfg = c
 	if sftpD != nil {
 		sftpDriver = sftpD
 	} else {

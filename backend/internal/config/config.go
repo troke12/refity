@@ -16,6 +16,7 @@ type Config struct {
 	JWTSecret       string   // Required in production; from JWT_SECRET
 	CORSOrigins     []string // Allowed origins for CORS; from CORS_ORIGINS (comma-sep)
 	FTPKnownHosts   string   // Optional path to known_hosts for SSH host key verification
+	SFTPSyncUpload  bool     // If true, upload to SFTP before responding (file on FTP when push completes). If false, upload in background (async).
 }
 
 func LoadConfig() *Config {
@@ -34,16 +35,18 @@ func LoadConfig() *Config {
 			corsOrigins[i] = strings.TrimSpace(corsOrigins[i])
 		}
 	}
+	syncUpload := strings.ToLower(os.Getenv("SFTP_SYNC_UPLOAD")) == "true" || os.Getenv("SFTP_SYNC_UPLOAD") == "1"
 	return &Config{
-		FTPHost:       os.Getenv("FTP_HOST"),
-		FTPPort:       os.Getenv("FTP_PORT"),
-		FTPUsername:   os.Getenv("FTP_USERNAME"),
-		FTPPassword:   os.Getenv("FTP_PASSWORD"),
-		HetznerToken:  os.Getenv("HCLOUD_TOKEN"),
-		HetznerBoxID:  boxID,
-		JWTSecret:     jwtSecret,
-		CORSOrigins:   corsOrigins,
-		FTPKnownHosts: os.Getenv("FTP_KNOWN_HOSTS"),
+		FTPHost:        os.Getenv("FTP_HOST"),
+		FTPPort:        os.Getenv("FTP_PORT"),
+		FTPUsername:    os.Getenv("FTP_USERNAME"),
+		FTPPassword:    os.Getenv("FTP_PASSWORD"),
+		HetznerToken:   os.Getenv("HCLOUD_TOKEN"),
+		HetznerBoxID:   boxID,
+		JWTSecret:      jwtSecret,
+		CORSOrigins:    corsOrigins,
+		FTPKnownHosts:  os.Getenv("FTP_KNOWN_HOSTS"),
+		SFTPSyncUpload: syncUpload,
 	}
 }
 

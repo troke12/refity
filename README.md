@@ -152,6 +152,8 @@ FTP_USERNAME=sftpuser
 FTP_PASSWORD=sftppass
 ```
 
+**Optional:** `SFTP_SYNC_UPLOAD=true` — upload to SFTP before responding so files are on FTP as soon as push completes. Default `false` (async upload in background).
+
 **Note**: Default admin user is created automatically:
 - Username: `admin`
 - Password: `admin`
