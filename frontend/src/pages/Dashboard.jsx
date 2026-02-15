@@ -90,7 +90,7 @@ function Dashboard() {
       <div className="container-fluid px-0">
         <div className="stats-section">
           <div className="row g-3">
-            <div className="col-md-2 col-sm-6">
+            <div className={`col-sm-6 ${ftpUsageEnabled ? 'col-md-2' : 'col-md-4'}`}>
               <StatCard
                 icon="bi-images"
                 label="Total Images"
@@ -98,7 +98,7 @@ function Dashboard() {
                 gradient="primary"
               />
             </div>
-            <div className="col-md-2 col-sm-6">
+            <div className={`col-sm-6 ${ftpUsageEnabled ? 'col-md-2' : 'col-md-4'}`}>
               <StatCard
                 icon="bi-folder"
                 label="Total Groups"
