@@ -84,7 +84,8 @@ function GroupPage() {
             {data?.repositories && data.repositories.length > 0 ? (
               <div className="row g-3">
                 {data.repositories.map((repo) => {
-                  const totalSize = repo.tags.reduce((sum, tag) => sum + tag.size, 0);
+                  const tags = repo.tags ?? [];
+                  const totalSize = tags.reduce((sum, tag) => sum + (tag?.size ?? 0), 0);
                   const fullRepoName = `${data.group}/${repo.name}`;
                   return (
                     <div key={fullRepoName} className="col-md-4">
@@ -100,7 +101,7 @@ function GroupPage() {
                             </h6>
                             <p className="card-text text-muted mb-1 small">
                               <i className="bi bi-tag me-1"></i>
-                              {repo.tags.length} {repo.tags.length === 1 ? 'tag' : 'tags'}
+                              {tags.length} {tags.length === 1 ? 'tag' : 'tags'}
                             </p>
                             <p className="card-text text-muted mb-0 small">
                               <i className="bi bi-hdd me-1"></i>
