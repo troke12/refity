@@ -303,8 +303,9 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			go doManifestUpload()
 		}
 
-		// Save image metadata to database
-		if db != nil {
+		// Save image metadata to database only for real tags (not digest refs like sha256:...)
+		// Docker pushes manifest by digest first, then by tag; we only want one row per tag.
+		if db != nil && !strings.HasPrefix(ref, "sha256:") {
 			go func() {
 				if err := saveImageToDatabase(name, ref, manifestDigest.String(), manifest); err != nil {
 					log.Printf("Failed to save image to database: %v", err)
@@ -794,13 +795,24 @@ func saveImageToDatabase(name, tag, digest string, manifestData []byte) error {
 		return err
 	}
 
-	// Calculate total size from layers
+	// Calculate total size: from layers (single image) or from manifests[].size (manifest list / multi-arch)
 	var totalSize int64
 	if layers, ok := manifest["layers"].([]interface{}); ok {
 		for _, layer := range layers {
 			if layerMap, ok := layer.(map[string]interface{}); ok {
 				if size, ok := layerMap["size"].(float64); ok {
 					totalSize += int64(size)
+				}
+			}
+		}
+	}
+	if totalSize == 0 {
+		if manifests, ok := manifest["manifests"].([]interface{}); ok {
+			for _, m := range manifests {
+				if mMap, ok := m.(map[string]interface{}); ok {
+					if size, ok := mMap["size"].(float64); ok {
+						totalSize += int64(size)
+					}
 				}
 			}
 		}

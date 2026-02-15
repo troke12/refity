@@ -431,24 +431,14 @@ func (d *Database) GetStatistics() (int, int64, error) {
 
 // Repository operations
 func (d *Database) CreateRepository(name string) (*Repository, error) {
-	result, err := d.db.Exec(`
-		INSERT INTO repositories (name, created_at)
+	_, err := d.db.Exec(`
+		INSERT OR IGNORE INTO repositories (name, created_at)
 		VALUES (?, CURRENT_TIMESTAMP)
 	`, name)
 	if err != nil {
 		return nil, err
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return nil, err
-	}
-
-	return &Repository{
-		ID:        id,
-		Name:      name,
-		CreatedAt: time.Now(),
-	}, nil
+	return d.GetRepository(name)
 }
 
 func (d *Database) GetRepository(name string) (*Repository, error) {
