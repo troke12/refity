@@ -21,6 +21,11 @@ func NewAPIRouter(sftpDriver sftp.StorageDriver, db *database.Database, cfg *con
 	}
 }
 
+// InvalidateDashboardCache forwards to the API handler so registry can invalidate after push.
+func (r *APIRouter) InvalidateDashboardCache() {
+	r.apiHandler.InvalidateDashboardCache()
+}
+
 func (r *APIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	path := req.URL.Path
 

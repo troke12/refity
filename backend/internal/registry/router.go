@@ -9,15 +9,17 @@ import (
 )
 
 var (
-	localDriver local.StorageDriver
-	sftpDriver  sftp.StorageDriver
-	db          *database.Database
-	cfg         *config.Config
+	localDriver   local.StorageDriver
+	sftpDriver    sftp.StorageDriver
+	db            *database.Database
+	cfg           *config.Config
+	onImageSaved  func() // optional callback to e.g. invalidate dashboard cache
 )
 
-func NewRouterWithDeps(localD local.StorageDriver, sftpD sftp.StorageDriver, c *config.Config, database *database.Database) http.Handler {
+func NewRouterWithDeps(localD local.StorageDriver, sftpD sftp.StorageDriver, c *config.Config, database *database.Database, onSaved func()) http.Handler {
 	localDriver = localD
 	cfg = c
+	onImageSaved = onSaved
 	if sftpD != nil {
 		sftpDriver = sftpD
 	} else {

@@ -142,6 +142,13 @@ func (h *APIHandler) DashboardHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(data)
 }
 
+// InvalidateDashboardCache clears the dashboard cache (e.g. after push so total images/size refresh).
+func (h *APIHandler) InvalidateDashboardCache() {
+	h.cacheMutex.Lock()
+	delete(h.cache, "dashboard")
+	h.cacheMutex.Unlock()
+}
+
 func (h *APIHandler) GetRepositoriesHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

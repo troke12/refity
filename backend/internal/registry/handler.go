@@ -795,7 +795,7 @@ func saveImageToDatabase(name, tag, digest string, manifestData []byte) error {
 		return err
 	}
 
-	// Calculate total size: from layers (single image) or from manifests[].size (manifest list / multi-arch)
+	// Calculate total size: from layers (single image) or for manifest list fetch each sub-manifest and sum layer sizes
 	var totalSize int64
 	if layers, ok := manifest["layers"].([]interface{}); ok {
 		for _, layer := range layers {
@@ -807,11 +807,33 @@ func saveImageToDatabase(name, tag, digest string, manifestData []byte) error {
 		}
 	}
 	if totalSize == 0 {
-		if manifests, ok := manifest["manifests"].([]interface{}); ok {
+		// Manifest list (multi-arch): resolve each referenced manifest and sum its layer sizes
+		if manifests, ok := manifest["manifests"].([]interface{}); ok && sftpDriver != nil {
+			manifestPathBase := "registry/" + name + "/manifests/"
 			for _, m := range manifests {
-				if mMap, ok := m.(map[string]interface{}); ok {
-					if size, ok := mMap["size"].(float64); ok {
-						totalSize += int64(size)
+				mMap, ok := m.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				digestStr, _ := mMap["digest"].(string)
+				if digestStr == "" {
+					continue
+				}
+				subManifestBytes, err := sftpDriver.GetContent(context.TODO(), manifestPathBase+digestStr)
+				if err != nil {
+					continue
+				}
+				var subManifest map[string]interface{}
+				if json.Unmarshal(subManifestBytes, &subManifest) != nil {
+					continue
+				}
+				if layers, ok := subManifest["layers"].([]interface{}); ok {
+					for _, layer := range layers {
+						if layerMap, ok := layer.(map[string]interface{}); ok {
+							if size, ok := layerMap["size"].(float64); ok {
+								totalSize += int64(size)
+							}
+						}
 					}
 				}
 			}
@@ -846,7 +868,11 @@ func saveImageToDatabase(name, tag, digest string, manifestData []byte) error {
 	err = db.CreateManifest(image.ID, digest, string(manifestData))
 	if err != nil {
 		log.Printf("Failed to save manifest: %v", err)
+		return err
 	}
 
+	if onImageSaved != nil {
+		onImageSaved()
+	}
 	return nil
 } 

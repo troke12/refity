@@ -78,8 +78,8 @@ func main() {
 	defer db.Close()
 	log.Println("Database initialized successfully")
 
-	regRouter := registry.NewRouterWithDeps(localDriver, driver, cfg, db)
 	apiRouter := api.NewAPIRouter(driver, db, cfg)
+	regRouter := registry.NewRouterWithDeps(localDriver, driver, cfg, db, apiRouter.InvalidateDashboardCache)
 
 	// Create main router
 	mainRouter := http.NewServeMux()
