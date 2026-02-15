@@ -250,39 +250,49 @@ func (d *PoolStorageDriver) DeleteRepositoryFolder(ctx context.Context, repoName
 	return nil
 }
 
-// deleteDirRecursiveWithClient deletes directories recursively
+// isNotExist returns true if err indicates file/dir does not exist (already deleted or race).
+func isNotExist(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return true
+	}
+	s := err.Error()
+	return strings.Contains(s, "does not exist") || strings.Contains(s, "no such file")
+}
+
+// deleteDirRecursiveWithClient deletes directories recursively. Ignores "file does not exist" (already gone).
 func deleteDirRecursiveWithClient(client *sftp.Client, dir string) error {
 	if dir == "" || dir == "." || dir == "/" {
 		return nil
 	}
-	
+
 	// First, delete all files and subdirectories
 	fis, err := client.ReadDir(dir)
 	if err != nil {
-		// If directory doesn't exist, consider it already deleted
-		return nil
+		if isNotExist(err) {
+			return nil
+		}
+		return err
 	}
-	
+
 	for _, fi := range fis {
 		fullPath := dir + "/" + fi.Name()
 		if fi.IsDir() {
-			// Recursively delete subdirectories
 			if err := deleteDirRecursiveWithClient(client, fullPath); err != nil {
 				return err
 			}
 		} else {
-			// Delete files
-			if err := client.Remove(fullPath); err != nil {
+			if err := client.Remove(fullPath); err != nil && !isNotExist(err) {
 				return fmt.Errorf("failed to delete file %s: %v", fullPath, err)
 			}
 		}
 	}
-	
-	// Finally, delete the directory itself
-	if err := client.Remove(dir); err != nil {
+
+	if err := client.Remove(dir); err != nil && !isNotExist(err) {
 		return fmt.Errorf("failed to delete directory %s: %v", dir, err)
 	}
-	
 	return nil
 }
 
@@ -578,39 +588,36 @@ func (d *Driver) DeleteRepositoryFolder(ctx context.Context, repoName string) er
 	return nil
 }
 
-// deleteDirRecursive deletes directories recursively
+// deleteDirRecursive deletes directories recursively. Ignores "file does not exist" (already gone).
 func (d *Driver) deleteDirRecursive(dir string) error {
 	if dir == "" || dir == "." || dir == "/" {
 		return nil
 	}
-	
-	// First, delete all files and subdirectories
+
 	fis, err := d.client.ReadDir(dir)
 	if err != nil {
-		// If directory doesn't exist, consider it already deleted
-		return nil
+		if isNotExist(err) {
+			return nil
+		}
+		return err
 	}
-	
+
 	for _, fi := range fis {
 		fullPath := dir + "/" + fi.Name()
 		if fi.IsDir() {
-			// Recursively delete subdirectories
 			if err := d.deleteDirRecursive(fullPath); err != nil {
 				return err
 			}
 		} else {
-			// Delete files
-			if err := d.client.Remove(fullPath); err != nil {
+			if err := d.client.Remove(fullPath); err != nil && !isNotExist(err) {
 				return fmt.Errorf("failed to delete file %s: %v", fullPath, err)
 			}
 		}
 	}
-	
-	// Finally, delete the directory itself
-	if err := d.client.Remove(dir); err != nil {
+
+	if err := d.client.Remove(dir); err != nil && !isNotExist(err) {
 		return fmt.Errorf("failed to delete directory %s: %v", dir, err)
 	}
-	
 	return nil
 }
 

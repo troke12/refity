@@ -23,6 +23,7 @@ function RepositoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedTag, setCopiedTag] = useState(null);
+  const [isDeletingRepo, setIsDeletingRepo] = useState(false);
 
   const loadData = async () => {
     try {
@@ -78,13 +79,17 @@ function RepositoryPage() {
   };
 
   const handleDeleteRepository = async () => {
+    if (isDeletingRepo) return;
     if (!window.confirm(`Delete this repository and all its tags?\n\nThis will also remove the folder from SFTP. This cannot be undone.`)) return;
+    setIsDeletingRepo(true);
     try {
       await repositoriesAPI.delete(fullRepoName);
       navigate(`/group/${encodeURIComponent(decodedGroup)}`);
     } catch (error) {
       console.error('Failed to delete repository:', error);
       alert('Failed to delete repository: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setIsDeletingRepo(false);
     }
   };
 
@@ -117,11 +122,16 @@ function RepositoryPage() {
                 <button
                   type="button"
                   onClick={handleDeleteRepository}
+                  disabled={isDeletingRepo}
                   className="btn btn-link text-danger p-0 ms-2"
                   title="Delete repository"
                   aria-label="Delete repository"
                 >
-                  <i className="bi bi-trash"></i>
+                  {isDeletingRepo ? (
+                    <span className="spinner-border spinner-border-sm" style={{ width: '1rem', height: '1rem' }} aria-hidden="true" />
+                  ) : (
+                    <i className="bi bi-trash"></i>
+                  )}
                 </button>
               </div>
               <small>List of tags for this repository</small>

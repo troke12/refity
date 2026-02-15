@@ -34,16 +34,30 @@ function GroupPage() {
     loadData();
   };
 
+  const [deletingRepo, setDeletingRepo] = useState(null);
+
   const handleDeleteRepository = async (e, fullRepoName, repoDisplayName) => {
     e.preventDefault();
     e.stopPropagation();
+    if (deletingRepo) return;
     if (!window.confirm(`Delete repository "${repoDisplayName}" and all its tags?\n\nThis will also remove the folder from SFTP. This cannot be undone.`)) return;
+    setDeletingRepo(fullRepoName);
+    const prevData = data;
     try {
+      // Optimistic: remove from list immediately
+      if (data?.repositories) {
+        setData({
+          ...data,
+          repositories: data.repositories.filter((r) => `${data.group}/${r.name}` !== fullRepoName),
+        });
+      }
       await repositoriesAPI.delete(fullRepoName);
-      loadData();
     } catch (err) {
       console.error('Failed to delete repository:', err);
+      setData(prevData);
       alert('Failed to delete repository: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setDeletingRepo(null);
     }
   };
 
@@ -111,11 +125,16 @@ function GroupPage() {
                           <button
                             type="button"
                             onClick={(e) => handleDeleteRepository(e, fullRepoName, repo.name)}
+                            disabled={deletingRepo === fullRepoName}
                             className="btn btn-link text-danger p-0 ms-2"
                             title="Delete repository"
                             aria-label="Delete repository"
                           >
-                            <i className="bi bi-trash"></i>
+                            {deletingRepo === fullRepoName ? (
+                              <span className="spinner-border spinner-border-sm" style={{ width: '1rem', height: '1rem' }} aria-hidden="true" />
+                            ) : (
+                              <i className="bi bi-trash"></i>
+                            )}
                           </button>
                         </div>
                       </div>
