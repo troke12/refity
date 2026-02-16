@@ -122,12 +122,26 @@ services:
     image: troke12/refity-backend:latest
     container_name: refity-backend
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      # Override or add values from .env if needed
+      # SFTP connection
+      - FTP_HOST=u123456.your-storagebox.de
+      - FTP_PORT=23
+      - FTP_USERNAME=your-sftp-user
+      - FTP_PASSWORD=your-sftp-password
+
+      # Backend config
       - PORT=5000
+      - JWT_SECRET=change-me-to-a-long-random-string
       - CORS_ORIGINS=http://localhost:8080
+
+      # Optional: enable Hetzner usage card on dashboard
+      # - FTP_USAGE_ENABLED=true
+      # - HCLOUD_TOKEN=your-hcloud-token
+      # - HETZNER_BOX_ID=123456
+
+      # Optional: verify SFTP host key
+      # - FTP_KNOWN_HOSTS=/app/known_hosts
+
     volumes:
       - refity-data:/data
       # If you use FTP_KNOWN_HOSTS, mount it into the container
@@ -142,7 +156,7 @@ services:
     depends_on:
       - refity-backend
     environment:
-      # If the image reads VITE_API_URL at runtime; otherwise baked at build time
+      # Frontend talks to the backend inside the compose network
       - VITE_API_URL=http://refity-backend:5000
     ports:
       - "8080:80"
