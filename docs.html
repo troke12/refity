@@ -23,6 +23,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark-dimmed.min.css" />
   <script type="application/ld+json">
   {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"Refity","item":"https://troke.id/refity/"},{"@type":"ListItem","position":2,"name":"Documentation","item":"https://troke.id/refity/docs.html"}]}
   </script>
@@ -95,14 +96,14 @@
       <ol>
         <li>Clone the repository and copy the example env file:</li>
       </ol>
-      <pre class="code-block"><code>git clone https://github.com/troke12/refity.git
+      <pre class="code-block"><code class="language-bash">git clone https://github.com/troke12/refity.git
 cd refity
 cp .env.example .env</code></pre>
       <ol start="2">
         <li>Edit <code>.env</code> and set at least: <code>FTP_HOST</code>, <code>FTP_PORT</code>, <code>FTP_USERNAME</code>, <code>FTP_PASSWORD</code>. For production, set <code>JWT_SECRET</code>.</li>
         <li>Start the stack:</li>
       </ol>
-      <pre class="code-block"><code>docker-compose up -d</code></pre>
+      <pre class="code-block"><code class="language-bash">docker-compose up -d</code></pre>
       <p>Open <strong>http://localhost:8080</strong> for the web UI. Default login: <code>admin</code> / <code>admin</code> — change the password after first login.</p>
       <p>The registry API is on port <strong>5000</strong>. Configure Docker to use it as an insecure registry, or put a reverse proxy with TLS in front.</p>
 
@@ -114,7 +115,7 @@ cp .env.example .env</code></pre>
       </ul>
       <p>You can either use the <code>docker-compose.yml</code> in the repository or create your own stack using the published images on Docker Hub.</p>
       <p><strong>Sample <code>docker-compose.yml</code> using troke12/refity images:</strong></p>
-      <pre class="code-block"><code>version: "3.9"
+      <pre class="code-block"><code class="language-yaml">version: "3.9"
 
 services:
   refity-backend:
@@ -204,7 +205,7 @@ volumes:
       <p>From the web UI you can delete a single tag or the entire repository. Deleting a repository removes its data from SQLite and deletes the repository folder on SFTP.</p>
       <h3>Docker daemon: insecure registry</h3>
       <p>If your registry is HTTP (no TLS), configure the Docker daemon to allow it. Edit <code>/etc/docker/daemon.json</code> (Linux) or Docker Desktop settings:</p>
-      <pre class="code-block"><code>{
+      <pre class="code-block"><code class="language-json">{
   "insecure-registries": ["localhost:5000"]
 }</code></pre>
       <p>Replace <code>localhost:5000</code> with your registry host:port. Restart Docker after changing.</p>
@@ -252,7 +253,7 @@ volumes:
         <li><code>GET /api/ftp/usage</code> — Hetzner Storage Box usage (only when <code>FTP_USAGE_ENABLED=true</code>).</li>
       </ul>
       <p>Example: login and get dashboard:</p>
-      <pre class="code-block"><code># Login
+      <pre class="code-block"><code class="language-bash"># Login
 TOKEN=$(curl -s -X POST http://localhost:5000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"admin"}' | jq -r '.token')
@@ -306,6 +307,8 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:5000/api/dashboard</c
     </div>
   </footer>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script>hljs.highlightAll();</script>
   <script src="script.js"></script>
   <script>
     (function() {
