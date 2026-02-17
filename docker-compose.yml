@@ -14,6 +14,10 @@ services:
     environment:
       - PORT=5000
     restart: unless-stopped
+    networks:
+      default:
+        aliases:
+          - refity-backend
 
   frontend:
     build:
@@ -24,5 +28,6 @@ services:
     depends_on:
       - backend
     environment:
-      - VITE_API_URL="backend:5000"
+      # Optional: if you rename the backend service, set this accordingly (e.g. refity-backend:5000)
+      - BACKEND_UPSTREAM=backend:5000
     restart: unless-stopped

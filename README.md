@@ -210,6 +210,20 @@ npm install
 npm run dev
 ```
 
+The frontend development server uses `VITE_API_URL` (see `frontend/.env.example`) to reach the backend, typically `http://localhost:5000`.
+
+### Production (Docker Compose) networking note
+
+In production, the frontend container runs behind nginx and uses **same-origin** requests to `/api/*` and `/v2/*`. Nginx proxies these to the backend service.
+
+If you rename the backend service in `docker-compose.yml`, set this on the **frontend container**:
+
+```env
+BACKEND_UPSTREAM=backend:5000
+```
+
+Important: in Docker Compose networking, the hostname is the **service name** (e.g. `backend`), not `container_name`.
+
 ---
 
 ## API Endpoints
