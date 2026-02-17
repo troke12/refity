@@ -6,11 +6,16 @@ Refity stores image blobs and manifests on any SFTP server (e.g. Hetzner Storage
 
 ![Dashboard](screenshot/dashboard.png)
 
+- [![Docker pulls (backend)](https://img.shields.io/docker/pulls/troke12/refity-backend?style=flat-square)](https://hub.docker.com/r/troke12/refity-backend)
+- [![Docker pulls (frontend)](https://img.shields.io/docker/pulls/troke12/refity-frontend?style=flat-square)](https://hub.docker.com/r/troke12/refity-frontend)
+- [![GitHub stars](https://img.shields.io/github/stars/troke12/refity?style=flat-square)](https://github.com/troke12/refity)
+- [![Docs](https://img.shields.io/badge/docs-troke.id%2Frefity-0066CC?style=flat-square)](https://troke.id/refity/docs.html)
+
 ## Documentation
 
-- Docs: `https://troke.id/refity/docs.html`
-- Why SFTP (comparison): `https://troke.id/refity/compare.html`
-- Features: `https://troke.id/refity/features.html`
+- Docs: [troke.id/refity/docs.html](https://troke.id/refity/docs.html)
+- Why SFTP (comparison): [troke.id/refity/compare.html](https://troke.id/refity/compare.html)
+- Features: [troke.id/refity/features.html](https://troke.id/refity/features.html)
 
 ## Features (high level)
 
@@ -31,8 +36,8 @@ docker-compose up -d
 
 Open:
 
-- Web UI: `http://localhost:8080`
-- Backend API: `http://localhost:5000`
+- Web UI: [http://localhost:8080](http://localhost:8080)
+- Backend API: [http://localhost:5000](http://localhost:5000)
 
 Default user:
 
