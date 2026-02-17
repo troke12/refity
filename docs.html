@@ -167,37 +167,52 @@ volumes:
       <p>Ensure the host that runs Docker can reach your SFTP server (port 22 or 23). If you use <code>FTP_KNOWN_HOSTS</code>, the file must be available inside the backend container (mount it or bake into image).</p>
 
       <h2 id="configuration">Configuration reference</h2>
-      <p>All configuration is via environment variables. See <code>.env.example</code> in the repo for a categorized list.</p>
-      <p><strong>Important:</strong> variables below are for the <strong>backend</strong> container unless stated otherwise. The production frontend uses same-origin <code>/api/*</code> and nginx proxies to the backend.</p>
+      <p>All configuration is via environment variables. See <code>.env.example</code> in the repo.</p>
+
+      <h3>Backend environment variables</h3>
       <div class="comparison-wrap">
         <table class="comparison-table">
           <thead>
             <tr>
-              <th>Category</th>
               <th>Variable</th>
               <th>Required</th>
               <th>Description</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td>Storage (SFTP)</td><td><code>FTP_HOST</code></td><td>Yes</td><td>SFTP server hostname (e.g. <code>u123456.your-storagebox.de</code> for Hetzner)</td></tr>
-            <tr><td>Storage (SFTP)</td><td><code>FTP_PORT</code></td><td>Yes</td><td>SFTP port (usually <code>22</code>, or <code>23</code> for Hetzner Storage Box)</td></tr>
-            <tr><td>Storage (SFTP)</td><td><code>FTP_USERNAME</code></td><td>Yes</td><td>SFTP username</td></tr>
-            <tr><td>Storage (SFTP)</td><td><code>FTP_PASSWORD</code></td><td>Yes</td><td>SFTP password</td></tr>
-            <tr><td>Storage (SFTP)</td><td><code>FTP_KNOWN_HOSTS</code></td><td>No</td><td>Path to SSH <code>known_hosts</code> file for host key verification (recommended in production)</td></tr>
-            <tr><td>Storage (SFTP)</td><td><code>SFTP_SYNC_UPLOAD</code></td><td>No</td><td><code>true</code> = upload to SFTP before responding (slower, but push completes only after remote write). <code>false</code> = async upload. Default: <code>false</code></td></tr>
+            <tr><td><code>FTP_HOST</code></td><td>Yes</td><td>SFTP server hostname (e.g. <code>u123456.your-storagebox.de</code> for Hetzner)</td></tr>
+            <tr><td><code>FTP_PORT</code></td><td>Yes</td><td>SFTP port (usually <code>22</code>, or <code>23</code> for Hetzner Storage Box)</td></tr>
+            <tr><td><code>FTP_USERNAME</code></td><td>Yes</td><td>SFTP username</td></tr>
+            <tr><td><code>FTP_PASSWORD</code></td><td>Yes</td><td>SFTP password</td></tr>
+            <tr><td><code>FTP_KNOWN_HOSTS</code></td><td>No</td><td>Path to SSH <code>known_hosts</code> file for host key verification (recommended in production)</td></tr>
+            <tr><td><code>SFTP_SYNC_UPLOAD</code></td><td>No</td><td><code>true</code> = upload to SFTP before responding. <code>false</code> = async upload. Default: <code>false</code></td></tr>
 
-            <tr><td>Server</td><td><code>PORT</code></td><td>No</td><td>Backend HTTP port. Default: <code>5000</code></td></tr>
+            <tr><td><code>PORT</code></td><td>No</td><td>Backend HTTP port. Default: <code>5000</code></td></tr>
 
-            <tr><td>Security</td><td><code>JWT_SECRET</code></td><td>Production</td><td>Secret for signing JWT tokens. Use a long random string (32+ chars).</td></tr>
-            <tr><td>Security</td><td><code>CORS_ORIGINS</code></td><td>No</td><td>Comma-separated allowed origins for the API (e.g. your frontend URL). Default: <code>http://localhost:8080</code>, <code>http://127.0.0.1:8080</code></td></tr>
+            <tr><td><code>JWT_SECRET</code></td><td>Production</td><td>Secret for signing JWT tokens. Use a long random string (32+ chars).</td></tr>
+            <tr><td><code>CORS_ORIGINS</code></td><td>No</td><td>Comma-separated allowed origins for the API. Default: <code>http://localhost:8080</code>, <code>http://127.0.0.1:8080</code></td></tr>
 
-            <tr><td>Dashboard (Hetzner)</td><td><code>FTP_USAGE_ENABLED</code></td><td>No</td><td><code>true</code> only if using Hetzner Storage Box and want the usage card on the dashboard. Default: <code>false</code></td></tr>
-            <tr><td>Dashboard (Hetzner)</td><td><code>HCLOUD_TOKEN</code></td><td>If FTP_USAGE_ENABLED</td><td>Hetzner Cloud API token (same as HCLOUD token)</td></tr>
-            <tr><td>Dashboard (Hetzner)</td><td><code>HETZNER_BOX_ID</code></td><td>If FTP_USAGE_ENABLED</td><td>Hetzner Storage Box numeric ID</td></tr>
+            <tr><td><code>FTP_USAGE_ENABLED</code></td><td>No</td><td><code>true</code> only if using Hetzner Storage Box and want the usage card on the dashboard. Default: <code>false</code></td></tr>
+            <tr><td><code>HCLOUD_TOKEN</code></td><td>If FTP_USAGE_ENABLED</td><td>Hetzner Cloud API token</td></tr>
+            <tr><td><code>HETZNER_BOX_ID</code></td><td>If FTP_USAGE_ENABLED</td><td>Hetzner Storage Box numeric ID</td></tr>
+          </tbody>
+        </table>
+      </div>
 
-            <tr><td>Frontend (Docker)</td><td><code>BACKEND_UPSTREAM</code></td><td>No</td><td><strong>Frontend container only.</strong> Where nginx proxies <code>/api</code> and <code>/v2</code>. Default: <code>backend:5000</code>. If you rename the backend service, update this.</td></tr>
-            <tr><td>Frontend (UI)</td><td><code>VITE_REGISTRY_URL</code></td><td>No</td><td>Registry host shown in “docker pull” commands in the UI (e.g. <code>registry.example.com</code> or <code>localhost:5000</code>).</td></tr>
+      <h3>Frontend environment variables</h3>
+      <p>The production frontend uses same-origin <code>/api/*</code> and nginx proxies to the backend.</p>
+      <div class="comparison-wrap">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Variable</th>
+              <th>Required</th>
+              <th>Description</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td><code>BACKEND_UPSTREAM</code></td><td>No</td><td>Frontend container only. Where nginx proxies <code>/api</code> and <code>/v2</code>. Default: <code>backend:5000</code>. If you rename the backend service, update this.</td></tr>
+            <tr><td><code>VITE_REGISTRY_URL</code></td><td>No</td><td>Registry host shown in “docker pull” commands in the UI (e.g. <code>registry.example.com</code> or <code>localhost:5000</code>).</td></tr>
           </tbody>
         </table>
       </div>
