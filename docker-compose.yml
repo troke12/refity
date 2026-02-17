@@ -28,6 +28,7 @@ services:
     depends_on:
       - backend
     environment:
-      # Optional: if you rename the backend service, set this accordingly (e.g. refity-backend:5000)
+      # If you rename the backend service, update this accordingly (example: refity-backend:5000).
+      # You may set host:port or a full URL; both work.
       - BACKEND_UPSTREAM=backend:5000
     restart: unless-stopped
