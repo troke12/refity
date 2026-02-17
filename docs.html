@@ -111,16 +111,16 @@ cp .env.example .env</code></pre>
       <p>Refity runs with Docker Compose. Two services are started:</p>
       <ul>
         <li><strong>Backend</strong> — Exposes port <code>5000</code> (configurable via <code>PORT</code>). Needs access to your SFTP server (outbound). Persists SQLite in a volume (e.g. <code>./data</code> or a named volume) so metadata survives restarts.</li>
-        <li><strong>Frontend</strong> — Built with Vite; typically served by nginx in the container, port <code>8080</code>. Calls the backend at the URL you set (e.g. <code>VITE_API_URL</code> when building).</li>
+        <li><strong>Frontend</strong> — Built with Vite; served by nginx in the container on port <code>8080</code>. In Docker, the frontend uses same-origin <code>/api/*</code> and nginx proxies to the backend.</li>
       </ul>
       <p>You can either use the <code>docker-compose.yml</code> in the repository or create your own stack using the published images on Docker Hub.</p>
+      <p><strong>Note:</strong> Docker Compose networking uses the <strong>service name</strong> as the hostname (not <code>container_name</code>). If you rename the backend service, update <code>BACKEND_UPSTREAM</code> on the frontend service.</p>
       <p><strong>Sample <code>docker-compose.yml</code> using troke12/refity images:</strong></p>
       <pre class="code-block"><code class="language-yaml">version: "3.9"
 
 services:
-  refity-backend:
+  backend:
     image: troke12/refity-backend:latest
-    container_name: refity-backend
     restart: unless-stopped
     environment:
       # SFTP connection
@@ -149,15 +149,14 @@ services:
     ports:
       - "5000:5000"
 
-  refity-frontend:
+  frontend:
     image: troke12/refity-frontend:latest
-    container_name: refity-frontend
     restart: unless-stopped
     depends_on:
-      - refity-backend
+      - backend
     environment:
-      # Frontend talks to the backend inside the compose network
-      - VITE_API_URL=http://refity-backend:5000
+      # Used by the frontend nginx proxy (default: backend:5000)
+      - BACKEND_UPSTREAM=backend:5000
     ports:
       - "8080:80"
 
