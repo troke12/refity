@@ -20,7 +20,7 @@ Refity stores image blobs and manifests on any SFTP server (e.g. Hetzner Storage
 - Why SFTP (comparison): [troke.id/refity/compare.html](https://troke.id/refity/compare.html)
 - Features: [troke.id/refity/features.html](https://troke.id/refity/features.html)
 
-## Features (high level)
+## Key features
 
 - Docker Registry HTTP API v2 (`/v2/*`)
 - SFTP storage backend
