@@ -6,10 +6,13 @@ Refity stores image blobs and manifests on any SFTP server (e.g. Hetzner Storage
 
 ![Dashboard](screenshot/dashboard.png)
 
-- [![Docker pulls (backend)](https://img.shields.io/docker/pulls/troke12/refity-backend?style=flat-square)](https://hub.docker.com/r/troke12/refity-backend)
-- [![Docker pulls (frontend)](https://img.shields.io/docker/pulls/troke12/refity-frontend?style=flat-square)](https://hub.docker.com/r/troke12/refity-frontend)
-- [![GitHub stars](https://img.shields.io/github/stars/troke12/refity?style=flat-square)](https://github.com/troke12/refity)
-- [![Docs](https://img.shields.io/badge/docs-troke.id%2Frefity-0066CC?style=flat-square)](https://troke.id/refity/docs.html)
+<p align="center">
+  <a href="https://hub.docker.com/r/troke12/refity-backend"><img alt="Docker pulls (backend)" src="https://img.shields.io/docker/pulls/troke12/refity-backend?style=flat-square"></a>
+  <a href="https://hub.docker.com/r/troke12/refity-frontend"><img alt="Docker pulls (frontend)" src="https://img.shields.io/docker/pulls/troke12/refity-frontend?style=flat-square"></a>
+  <a href="https://github.com/troke12/refity"><img alt="GitHub stars" src="https://img.shields.io/github/stars/troke12/refity?style=flat-square"></a>
+  <a href="https://troke.id/refity/"><img alt="Website" src="https://img.shields.io/badge/website-troke.id%2Frefity-0066CC?style=flat-square"></a>
+  <a href="https://troke.id/refity/docs.html"><img alt="Docs" src="https://img.shields.io/badge/docs-quickstart%20%2B%20api-004499?style=flat-square"></a>
+</p>
 
 ## Documentation
 
