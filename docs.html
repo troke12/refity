@@ -203,6 +203,35 @@ volumes:
       <p><strong>Push flow:</strong> Docker client pushes layers and manifest to the backend. The backend writes layers to local temp storage (or streams in sync mode), then uploads to SFTP. Manifest is stored on SFTP by digest and by tag. Metadata is written to SQLite. Dashboard cache is invalidated so the UI reflects the new image.</p>
       <p><strong>Pull flow:</strong> Docker client requests manifest and blobs. The backend reads from SFTP (and serves from local cache when available) and returns them. No SQLite involved for pull.</p>
 
+      <h3>System overview</h3>
+      <pre class="mermaid">flowchart TB
+  Docker["Docker CLI (push/pull)"] -->|"Registry API v2"| Backend["Backend (Go) :5000"]
+  Browser["Browser (Web UI)"] --> Frontend["Frontend (React) :8080"]
+  Frontend -->|"REST + JWT"| Backend
+  Backend -->|"SSH/SFTP"| SFTP["SFTP storage (blobs + manifests)"]
+  Backend --> DB["SQLite (refity.db)"]</pre>
+
+      <h3>Request flow</h3>
+      <pre class="mermaid">sequenceDiagram
+  participant User
+  participant Docker
+  participant Frontend
+  participant Backend
+  participant SFTP
+  participant SQLite
+
+  Note over User,SQLite: Push image (Docker)
+  User->>Docker: docker push
+  Docker->>Backend: /v2/* blobs + manifests
+  Backend->>SFTP: store blobs/manifests (sync or async)
+  Backend->>SQLite: write metadata
+
+  Note over User,Backend: Web UI
+  User->>Frontend: open UI
+  Frontend->>Backend: /api/* (JWT)
+  Backend->>SQLite: read metadata
+  Backend-->>Frontend: JSON</pre>
+
       <h2 id="usage">Using the registry</h2>
       <h3>Push an image</h3>
       <ol>
@@ -322,6 +351,8 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:5000/api/dashboard</c
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script>hljs.highlightAll();</script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({ startOnLoad: true });</script>
   <script src="script.js"></script>
   <script>
     (function() {

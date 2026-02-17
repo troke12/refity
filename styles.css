@@ -460,6 +460,14 @@ img {
   margin: 1.25rem 0;
 }
 
+.page-content .mermaid {
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  overflow-x: auto;
+}
+
 .page-content code {
   background: var(--blue-bg);
   color: var(--blue-dark);
