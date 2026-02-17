@@ -1,0 +1,6 @@
+* text=auto
+
+# Ensure scripts/config templates stay LF (fixes /bin/sh^M issues)
+*.sh text eol=lf
+*.template text eol=lf
+*.conf text eol=lf
