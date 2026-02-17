@@ -114,7 +114,7 @@ cp .env.example .env</code></pre>
         <li><strong>Frontend</strong> — Built with Vite; served by nginx in the container on port <code>8080</code>. In Docker, the frontend uses same-origin <code>/api/*</code> and nginx proxies to the backend.</li>
       </ul>
       <p>You can either use the <code>docker-compose.yml</code> in the repository or create your own stack using the published images on Docker Hub.</p>
-      <p><strong>Note:</strong> Docker Compose networking uses the <strong>service name</strong> as the hostname (not <code>container_name</code>). If you rename the backend service, update <code>BACKEND_UPSTREAM</code> on the frontend service.</p>
+      <p><strong>Note:</strong> Docker Compose networking uses the <strong>service name</strong> as the hostname (not <code>container_name</code>). If you rename the backend service, update <code>BACKEND_UPSTREAM</code> on the frontend service. You can set it as <code>backend:5000</code> or <code>http://backend:5000</code>.</p>
       <p><strong>Sample <code>docker-compose.yml</code> using troke12/refity images:</strong></p>
       <pre class="code-block"><code class="language-yaml">version: "3.9"
 
@@ -211,7 +211,7 @@ volumes:
             </tr>
           </thead>
           <tbody>
-            <tr><td><code>BACKEND_UPSTREAM</code></td><td>No</td><td>Frontend container only. Where nginx proxies <code>/api</code> and <code>/v2</code>. Default: <code>backend:5000</code>. If you rename the backend service, update this.</td></tr>
+            <tr><td><code>BACKEND_UPSTREAM</code></td><td>No</td><td>Frontend container only. Where nginx proxies <code>/api</code> and <code>/v2</code>. Default: <code>backend:5000</code>. You may set <code>backend:5000</code> or <code>http://backend:5000</code>.</td></tr>
             <tr><td><code>VITE_REGISTRY_URL</code></td><td>No</td><td>Registry host shown in “docker pull” commands in the UI (e.g. <code>registry.example.com</code> or <code>localhost:5000</code>).</td></tr>
           </tbody>
         </table>
