@@ -93,7 +93,10 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Not found"))
 }
 
-func initiateBlobUpload(w http.ResponseWriter, _ *http.Request, path string) {
+func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
+	// Drain body so connection can be reused for PATCH (Docker reuses same connection)
+	io.Copy(io.Discard, r.Body)
+	r.Body.Close()
 	uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
 	name := strings.TrimSuffix(strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/"), "/")
 	if !validateRepoName(name) {
