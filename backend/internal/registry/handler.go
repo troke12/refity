@@ -194,10 +194,11 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		}
 	}
 
-	// Distribution spec: Initiate Monolithic Blob Upload — POST with ?digest= and body completes upload in one request (no PATCH).
-	// Use when SFTPSyncUpload so we can stream body directly to SFTP; avoids PATCH behind proxies that drop or buffer it.
+	// Distribution spec: Initiate Monolithic Blob Upload — POST with ?digest= and body
+	// completes upload in one request (no PATCH). Docker uses this for small blobs
+	// (config, etc). Must work in both sync and async modes.
 	digest := r.URL.Query().Get("digest")
-	if digest != "" && cfg != nil && cfg.SFTPSyncUpload && sftpDriver != nil && r.Body != nil {
+	if digest != "" && sftpDriver != nil && r.Body != nil {
 		parsedDigest, parseErr := godigest.Parse(digest)
 		if parseErr != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -207,28 +208,69 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, digest)
 		blobPath = strings.TrimLeft(blobPath, "/")
 		ctx := context.TODO()
-		sftpWriter, err := sftpDriver.Writer(ctx, blobPath, false)
-		if err != nil {
-			if err == sftp.ErrRepoNotFound {
-				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
+
+		if cfg != nil && cfg.SFTPSyncUpload {
+			// Sync mode: stream body directly to SFTP while hashing.
+			sftpWriter, err := sftpDriver.Writer(ctx, blobPath, false)
+			if err != nil {
+				if err == sftp.ErrRepoNotFound {
+					registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
+					return
+				}
+				log.Printf("initiateBlobUpload (monolithic sync): SFTP Writer failed: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Failed to open storage writer: " + err.Error()))
 				return
 			}
-			log.Printf("initiateBlobUpload (monolithic): SFTP Writer failed: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to open storage writer: " + err.Error()))
+			digester := godigest.Canonical.Digester()
+			multiWriter := io.MultiWriter(sftpWriter, digester.Hash())
+			buf := make([]byte, 1024*1024)
+			n, copyErr := io.CopyBuffer(multiWriter, r.Body, buf)
+			_ = r.Body.Close()
+			closeErr := sftpWriter.Close()
+			if closeErr != nil {
+				log.Printf("initiateBlobUpload (monolithic sync): Writer close: %v", closeErr)
+			}
+			if copyErr != nil {
+				log.Printf("initiateBlobUpload (monolithic sync): copy failed: %v", copyErr)
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Failed to stream blob: " + copyErr.Error()))
+				return
+			}
+			calculated := digester.Digest()
+			if calculated != parsedDigest {
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte("invalid checksum digest format (mismatch)"))
+				return
+			}
+			uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
+			w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, calculated.String()))
+			w.Header().Set("Docker-Content-Digest", calculated.String())
+			w.Header().Set("Docker-Upload-UUID", uploadID)
+			w.WriteHeader(http.StatusCreated)
+			log.Printf("initiateBlobUpload: monolithic sync upload completed %s (%d bytes)", name, n)
 			return
 		}
+
+		// Async mode: write to local staging, then upload to SFTP in background.
 		digester := godigest.Canonical.Digester()
-		multiWriter := io.MultiWriter(sftpWriter, digester.Hash())
+		localWriter, err := localDriver.Writer(ctx, blobPath)
+		if err != nil {
+			log.Printf("initiateBlobUpload (monolithic async): local Writer failed: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to open local writer: " + err.Error()))
+			return
+		}
+		multiWriter := io.MultiWriter(localWriter, digester.Hash())
 		buf := make([]byte, 1024*1024)
 		n, copyErr := io.CopyBuffer(multiWriter, r.Body, buf)
 		_ = r.Body.Close()
-		closeErr := sftpWriter.Close()
+		closeErr := localWriter.Close()
 		if closeErr != nil {
-			log.Printf("initiateBlobUpload (monolithic): Writer close: %v", closeErr)
+			log.Printf("initiateBlobUpload (monolithic async): local Writer close: %v", closeErr)
 		}
 		if copyErr != nil {
-			log.Printf("initiateBlobUpload (monolithic): copy failed: %v", copyErr)
+			log.Printf("initiateBlobUpload (monolithic async): copy failed: %v", copyErr)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to stream blob: " + copyErr.Error()))
 			return
@@ -239,13 +281,25 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 			w.Write([]byte("invalid checksum digest format (mismatch)"))
 			return
 		}
+		// Read back from local and upload to SFTP in background
+		localData, err := localDriver.GetContent(ctx, blobPath)
+		if err != nil {
+			log.Printf("initiateBlobUpload (monolithic async): read local failed: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to read blob from local"))
+			return
+		}
+		go func() {
+			if err := uploadBlobToSFTP(ctx, blobPath, blobPath, localData); err != nil {
+				log.Printf("initiateBlobUpload (monolithic async): SFTP upload failed: %v", err)
+			}
+		}()
 		uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
 		w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, calculated.String()))
 		w.Header().Set("Docker-Content-Digest", calculated.String())
 		w.Header().Set("Docker-Upload-UUID", uploadID)
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(""))
-		log.Printf("initiateBlobUpload: monolithic upload completed %s (%d bytes)", name, n)
+		log.Printf("initiateBlobUpload: monolithic async upload completed %s (%d bytes)", name, n)
 		return
 	}
 
@@ -253,11 +307,8 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	io.Copy(io.Discard, r.Body)
 	r.Body.Close()
 	uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
-	scheme := "http"
-	if r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	location := scheme + "://" + r.Host + "/v2/" + name + "/blobs/uploads/" + uploadID
+	// Use relative path for Location (no scheme/host) so it works behind any reverse proxy.
+	location := "/v2/" + name + "/blobs/uploads/" + uploadID
 	// Per distribution: Location includes _state so client can send next PATCH (chunked upload).
 	secret := ""
 	if cfg != nil {
@@ -269,8 +320,9 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	w.Header().Set("Location", location)
 	w.Header().Set("Range", "0-0")
+	w.Header().Set("Content-Length", "0")
+	w.Header().Set("Docker-Upload-UUID", uploadID)
 	w.WriteHeader(http.StatusAccepted)
-	w.Write([]byte(""))
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
@@ -278,13 +330,9 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 
 func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	log.Printf("uploadBlobData: PATCH received for %s", path)
-	// Tell client we accept the body immediately (avoids client closing when waiting for 100 Continue).
-	if r.Header.Get("Expect") == "100-continue" {
-		w.WriteHeader(http.StatusContinue)
-		if f, ok := w.(http.Flusher); ok {
-			f.Flush()
-		}
-	}
+	// NOTE: Do NOT manually send 100 Continue — Go's net/http handles Expect: 100-continue
+	// automatically when r.Body is read. Manually sending it interferes with reverse proxies
+	// (Nginx/NPM) that handle the 100-continue protocol themselves.
 	parts := strings.SplitN(path, "/blobs/uploads/", 2)
 	if len(parts) != 2 {
 		log.Printf("uploadBlobData: invalid upload path: %s", path)
@@ -316,7 +364,7 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Failed to open upload target"))
 		return
 	}
-	// Large buffer so we pull from client quickly and avoid back-pressure / timeouts (e.g. "short copy").
+	// Large buffer so we pull from client quickly and avoid back-pressure / timeouts.
 	buf := make([]byte, 1024*1024)
 	n, err := io.CopyBuffer(dest, r.Body, buf)
 	if err != nil {
@@ -332,11 +380,8 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 	if totalSize == 0 {
 		endRange = 0
 	}
-	scheme := "http"
-	if r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	location := scheme + "://" + r.Host + "/v2/" + name + "/blobs/uploads/" + uploadID
+	// Use relative path for Location (no scheme/host) so it works behind any reverse proxy.
+	location := "/v2/" + name + "/blobs/uploads/" + uploadID
 	// Per distribution: Location must include _state so Docker client sends next PATCH.
 	secret := ""
 	if cfg != nil {
@@ -395,11 +440,8 @@ func handleBlobUploadStatus(w http.ResponseWriter, r *http.Request, path string)
 	if size <= 0 {
 		endRange = 0
 	}
-	scheme := "http"
-	if r.Header.Get("X-Forwarded-Proto") == "https" {
-		scheme = "https"
-	}
-	location := scheme + "://" + r.Host + "/v2/" + name + "/blobs/uploads/" + uploadID
+	// Use relative path for Location (no scheme/host) so it works behind any reverse proxy.
+	location := "/v2/" + name + "/blobs/uploads/" + uploadID
 	secret := ""
 	if cfg != nil {
 		secret = cfg.JWTSecret
