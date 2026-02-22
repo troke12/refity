@@ -104,7 +104,7 @@ cp .env.example .env</code></pre>
         <li>Start the stack:</li>
       </ol>
       <pre class="code-block"><code class="language-bash">docker-compose up -d</code></pre>
-      <p>Open <strong>http://localhost:8080</strong> for the web UI. Default login: <code>admin</code> / <code>admin</code> — change the password after first login.</p>
+      <p>Open <strong>http://localhost:8888</strong> for the web UI (or <code>http://localhost:8080</code> if you map frontend to 8080). Default login: <code>admin</code> / <code>admin</code> — change the password after first login.</p>
       <p>The registry API is on port <strong>5000</strong>. Configure Docker to use it as an insecure registry, or put a reverse proxy with TLS in front.</p>
 
       <h2 id="installation">Installation details</h2>
@@ -114,55 +114,45 @@ cp .env.example .env</code></pre>
         <li><strong>Frontend</strong> — Built with Vite; served by nginx in the container on port <code>8080</code>. In Docker, the frontend uses same-origin <code>/api/*</code> and nginx proxies to the backend.</li>
       </ul>
       <p>You can either use the <code>docker-compose.yml</code> in the repository or create your own stack using the published images on Docker Hub.</p>
-      <p><strong>Note:</strong> Docker Compose networking uses the <strong>service name</strong> as the hostname (not <code>container_name</code>). If you rename the backend service, update <code>BACKEND_UPSTREAM</code> on the frontend service. You can set it as <code>backend:5000</code> or <code>http://backend:5000</code>.</p>
-      <p><strong>Sample <code>docker-compose.yml</code> using troke12/refity images:</strong></p>
+      <p><strong>Note:</strong> Docker Compose networking uses the <strong>service name</strong> as the hostname (not <code>container_name</code>). If you rename the backend service, update <code>BACKEND_UPSTREAM</code> on the frontend service. You can set it as <code>backend:5000</code> or <code>http://backend:5000</code>.</p>      <p><strong>Sample <code>docker-compose.yml</code> using troke12/refity images (starter):</strong></p>
       <pre class="code-block"><code class="language-yaml">version: "3.9"
 
 services:
-  backend:
+  refity-backend:
     image: troke12/refity-backend:latest
+    container_name: refity-backend
     restart: unless-stopped
     environment:
       # SFTP connection
-      - FTP_HOST=u123456.your-storagebox.de
+      - FTP_HOST=yourftpserver.com
       - FTP_PORT=23
-      - FTP_USERNAME=your-sftp-user
-      - FTP_PASSWORD=your-sftp-password
+      - FTP_USERNAME=user12345
+      - FTP_PASSWORD=random-your-password
 
       # Backend config
       - PORT=5000
-      - JWT_SECRET=change-me-to-a-long-random-string
-      - CORS_ORIGINS=http://localhost:8080
-
-      # Optional: enable Hetzner usage card on dashboard
-      # - FTP_USAGE_ENABLED=true
-      # - HCLOUD_TOKEN=your-hcloud-token
-      # - HETZNER_BOX_ID=123456
-
-      # Optional: verify SFTP host key
-      # - FTP_KNOWN_HOSTS=/app/known_hosts
+      - JWT_SECRET=random-32-jwt-secret
+      - SFTP_SYNC_UPLOAD=true
 
     volumes:
-      - refity-data:/data
-      # If you use FTP_KNOWN_HOSTS, mount it into the container
-      # - /path/to/known_hosts:/app/known_hosts:ro
+      - ./refity-data:/app/data
     ports:
       - "5000:5000"
 
-  frontend:
+  refity-frontend:
     image: troke12/refity-frontend:latest
+    container_name: refity-frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      - refity-backend
     environment:
-      # Used by the frontend nginx proxy (default: backend:5000)
-      - BACKEND_UPSTREAM=backend:5000
+      # Frontend talks to the backend inside the compose network
+      - BACKEND_UPSTREAM=refity-backend:5000
+      - VITE_REGISTRY_URL=registry.example.com
     ports:
-      - "8080:80"
-
-volumes:
-  refity-data:
+      - "8888:80"
 </code></pre>
+      <p>With this starter, the web UI is at <strong>http://localhost:8888</strong> and the registry API at <strong>http://localhost:5000</strong>.</p>
       <p>On first run, the backend creates the SQLite database and a default user <code>admin</code> / <code>admin</code>. Change the password via the web UI (Profile) before exposing the service.</p>
       <p>Ensure the host that runs Docker can reach your SFTP server (port 22 or 23). If you use <code>FTP_KNOWN_HOSTS</code>, the file must be available inside the backend container (mount it or bake into image).</p>
 
