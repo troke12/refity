@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"refity/backend/internal/api"
 	"refity/backend/internal/auth"
@@ -65,12 +66,15 @@ func main() {
 	}
 	log.Println("SFTP connection established successfully")
 
-	// Initialize database
-	dbPath := "data/refity.db"
-	// Ensure data directory exists
-	if err := os.MkdirAll("data", 0755); err != nil {
+	// Initialize database (use /app/data in container for consistent persistence with volume)
+	dataDir := "data"
+	if _, err := os.Stat("/app/data"); err == nil {
+		dataDir = "/app/data"
+	}
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		log.Printf("Warning: Failed to create data directory: %v", err)
 	}
+	dbPath := dataDir + "/refity.db"
 	db, err := database.NewDatabase(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
@@ -101,8 +105,14 @@ func main() {
 	if port == "" {
 		port = "5000"
 	}
+	// No ReadTimeout/WriteTimeout so long blob uploads (Singapore→Germany) don't get cut
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           handler,
+		ReadHeaderTimeout: 60 * time.Second, // slowloris protection only
+	}
 	log.Printf("Backend server listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, handler); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server error: %v", err)
 	}
 }

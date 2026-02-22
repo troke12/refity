@@ -2,6 +2,9 @@ package registry
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,6 +20,65 @@ import (
 	"refity/backend/internal/database"
 	"refity/backend/internal/driver/sftp"
 )
+
+// blobUploadState matches distribution format so Docker client gets _state in Location for chunked uploads.
+type blobUploadState struct {
+	Name      string    `json:"name"`
+	UUID      string    `json:"uuid"`
+	Offset    int64     `json:"offset"`
+	StartedAt time.Time `json:"startedat"`
+}
+
+func packUploadState(secret string, state blobUploadState) (string, error) {
+	if secret == "" {
+		secret = "refity-secret-key-change-in-production"
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	p, err := json.Marshal(state)
+	if err != nil {
+		return "", err
+	}
+	mac.Write(p)
+	return base64.URLEncoding.EncodeToString(append(mac.Sum(nil), p...)), nil
+}
+
+func unpackUploadState(secret, token string) (blobUploadState, error) {
+	var state blobUploadState
+	if token == "" {
+		return state, fmt.Errorf("empty _state")
+	}
+	if secret == "" {
+		secret = "refity-secret-key-change-in-production"
+	}
+	tokenBytes, err := base64.URLEncoding.DecodeString(token)
+	if err != nil {
+		return state, err
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	if len(tokenBytes) < mac.Size() {
+		return state, fmt.Errorf("invalid _state token")
+	}
+	macBytes := tokenBytes[:mac.Size()]
+	messageBytes := tokenBytes[mac.Size():]
+	mac.Write(messageBytes)
+	if !hmac.Equal(mac.Sum(nil), macBytes) {
+		return state, fmt.Errorf("invalid _state signature")
+	}
+	if err := json.Unmarshal(messageBytes, &state); err != nil {
+		return state, err
+	}
+	return state, nil
+}
+
+// rewriteManifestToOCI rewrites Docker v2 manifest media types to OCI so pull works with daemons that require OCI.
+func rewriteManifestToOCI(manifest []byte) []byte {
+	s := string(manifest)
+	s = strings.ReplaceAll(s, "application/vnd.docker.distribution.manifest.v2+json", "application/vnd.oci.image.manifest.v1+json")
+	s = strings.ReplaceAll(s, "application/vnd.docker.distribution.manifest.list.v2+json", "application/vnd.oci.image.index.v1+json")
+	s = strings.ReplaceAll(s, "application/vnd.docker.container.image.v1+json", "application/vnd.oci.image.config.v1+json")
+	s = strings.ReplaceAll(s, "application/vnd.docker.image.rootfs.diff.tar.gzip", "application/vnd.oci.image.layer.v1.tar+gzip")
+	return []byte(s)
+}
 
 // validRepoName restricts repo name to avoid path traversal and invalid chars (Docker: alphanumeric, separators, one optional /)
 var validRepoName = regexp.MustCompile(`^[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)?$`)
@@ -62,6 +124,16 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 		uploadBlobData(w, r, path)
 		return
 	}
+	// /<name>/blobs/uploads/<upload_id> — GET/HEAD for upload status (resume); avoid falling through to blob download which rejects "uploads/..." as invalid path.
+	if strings.Contains(path, "/blobs/uploads/") && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+		handleBlobUploadStatus(w, r, path)
+		return
+	}
+	// /<name>/blobs/<digest> — HEAD so Docker can skip re-upload; existence = SFTP only (delete from SFTP = gone).
+	if strings.Contains(path, "/blobs/") && r.Method == http.MethodHead {
+		handleBlobHead(w, r, path)
+		return
+	}
 	// /<name>/blobs/<digest>
 	if strings.Contains(path, "/blobs/") && r.Method == http.MethodGet {
 		handleBlobDownload(w, path)
@@ -94,10 +166,6 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
-	// Drain body so connection can be reused for PATCH (Docker reuses same connection)
-	io.Copy(io.Discard, r.Body)
-	r.Body.Close()
-	uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
 	name := strings.TrimSuffix(strings.TrimPrefix(strings.Split(path, "/blobs/")[0], "/"), "/")
 	if !validateRepoName(name) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -125,15 +193,98 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 			}
 		}
 	}
-	
-	location := "/v2/" + name + "/blobs/uploads/" + uploadID
+
+	// Distribution spec: Initiate Monolithic Blob Upload — POST with ?digest= and body completes upload in one request (no PATCH).
+	// Use when SFTPSyncUpload so we can stream body directly to SFTP; avoids PATCH behind proxies that drop or buffer it.
+	digest := r.URL.Query().Get("digest")
+	if digest != "" && cfg != nil && cfg.SFTPSyncUpload && sftpDriver != nil && r.Body != nil {
+		parsedDigest, parseErr := godigest.Parse(digest)
+		if parseErr != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("invalid checksum digest format (parse)"))
+			return
+		}
+		blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, digest)
+		blobPath = strings.TrimLeft(blobPath, "/")
+		ctx := context.TODO()
+		sftpWriter, err := sftpDriver.Writer(ctx, blobPath, false)
+		if err != nil {
+			if err == sftp.ErrRepoNotFound {
+				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
+				return
+			}
+			log.Printf("initiateBlobUpload (monolithic): SFTP Writer failed: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to open storage writer: " + err.Error()))
+			return
+		}
+		digester := godigest.Canonical.Digester()
+		multiWriter := io.MultiWriter(sftpWriter, digester.Hash())
+		buf := make([]byte, 1024*1024)
+		n, copyErr := io.CopyBuffer(multiWriter, r.Body, buf)
+		_ = r.Body.Close()
+		closeErr := sftpWriter.Close()
+		if closeErr != nil {
+			log.Printf("initiateBlobUpload (monolithic): Writer close: %v", closeErr)
+		}
+		if copyErr != nil {
+			log.Printf("initiateBlobUpload (monolithic): copy failed: %v", copyErr)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to stream blob: " + copyErr.Error()))
+			return
+		}
+		calculated := digester.Digest()
+		if calculated != parsedDigest {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("invalid checksum digest format (mismatch)"))
+			return
+		}
+		uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
+		w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, calculated.String()))
+		w.Header().Set("Docker-Content-Digest", calculated.String())
+		w.Header().Set("Docker-Upload-UUID", uploadID)
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(""))
+		log.Printf("initiateBlobUpload: monolithic upload completed %s (%d bytes)", name, n)
+		return
+	}
+
+	// Chunked upload: drain body so connection can be reused for PATCH (Docker reuses same connection)
+	io.Copy(io.Discard, r.Body)
+	r.Body.Close()
+	uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
+	scheme := "http"
+	if r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	location := scheme + "://" + r.Host + "/v2/" + name + "/blobs/uploads/" + uploadID
+	// Per distribution: Location includes _state so client can send next PATCH (chunked upload).
+	secret := ""
+	if cfg != nil {
+		secret = cfg.JWTSecret
+	}
+	state := blobUploadState{Name: name, UUID: uploadID, Offset: 0, StartedAt: time.Now()}
+	if token, err := packUploadState(secret, state); err == nil {
+		location += "?_state=" + token
+	}
 	w.Header().Set("Location", location)
 	w.Header().Set("Range", "0-0")
 	w.WriteHeader(http.StatusAccepted)
 	w.Write([]byte(""))
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
+	log.Printf("uploadBlobData: PATCH received for %s", path)
+	// Tell client we accept the body immediately (avoids client closing when waiting for 100 Continue).
+	if r.Header.Get("Expect") == "100-continue" {
+		w.WriteHeader(http.StatusContinue)
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}
 	parts := strings.SplitN(path, "/blobs/uploads/", 2)
 	if len(parts) != 2 {
 		log.Printf("uploadBlobData: invalid upload path: %s", path)
@@ -147,27 +298,157 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("invalid repository name"))
 		return
 	}
-	uploadID := parts[1]
-	blob, err := io.ReadAll(r.Body)
+	uploadID := strings.TrimSuffix(parts[1], "/")
+	if idx := strings.Index(uploadID, "?"); idx >= 0 {
+		uploadID = uploadID[:idx]
+	}
+	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
+	uploadPath = strings.TrimLeft(uploadPath, "/")
+
+	ctx := context.TODO()
+	// Size before this PATCH (for append; 0 if first chunk).
+	sizeBefore, _ := localDriver.Size(ctx, uploadPath)
+	// Append so multiple PATCHes (chunked upload) accumulate; first PATCH creates the file.
+	dest, err := localDriver.WriterAppend(ctx, uploadPath)
 	if err != nil {
-		log.Printf("uploadBlobData: failed to read blob data: %v", err)
+		log.Printf("uploadBlobData: failed to open writer: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to open upload target"))
+		return
+	}
+	// Large buffer so we pull from client quickly and avoid back-pressure / timeouts (e.g. "short copy").
+	buf := make([]byte, 1024*1024)
+	n, err := io.CopyBuffer(dest, r.Body, buf)
+	if err != nil {
+		dest.Close()
+		log.Printf("uploadBlobData: failed to stream blob data: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to read blob data"))
 		return
 	}
-	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
-	uploadPath = strings.TrimLeft(uploadPath, "/")
-	// Skip group folder check for now - it's causing 403 errors
-	err = localDriver.PutContent(context.TODO(), uploadPath, blob, nil)
-	if err != nil {
-		log.Printf("uploadBlobData: failed to write blob to local: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to write blob to local: "+err.Error()))
+	// Total after this chunk (no need to stat; send 202 before Close so client gets response fast and can send next PATCH).
+	totalSize := sizeBefore + n
+	endRange := totalSize - 1
+	if totalSize == 0 {
+		endRange = 0
+	}
+	scheme := "http"
+	if r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	location := scheme + "://" + r.Host + "/v2/" + name + "/blobs/uploads/" + uploadID
+	// Per distribution: Location must include _state so Docker client sends next PATCH.
+	secret := ""
+	if cfg != nil {
+		secret = cfg.JWTSecret
+	}
+	startedAt := time.Time{}
+	if prevState, err := unpackUploadState(secret, r.URL.Query().Get("_state")); err == nil && prevState.UUID == uploadID {
+		startedAt = prevState.StartedAt
+	}
+	state := blobUploadState{Name: name, UUID: uploadID, Offset: totalSize, StartedAt: startedAt}
+	if token, err := packUploadState(secret, state); err == nil {
+		location += "?_state=" + token
+	}
+	w.Header().Set("Location", location)
+	w.Header().Set("Range", fmt.Sprintf("0-%d", endRange))
+	w.Header().Set("Content-Length", "0")
+	w.Header().Set("Docker-Upload-UUID", uploadID)
+	w.WriteHeader(http.StatusAccepted)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	log.Printf("uploadBlobData: 202 sent for %s (Range 0-%d, +%d this chunk)", path, endRange, n)
+	// Close after response so client isn't waiting on disk sync; may help high-latency clients send next PATCH.
+	if err := dest.Close(); err != nil {
+		log.Printf("uploadBlobData: writer close after 202: %v", err)
+	}
+}
+
+// handleBlobUploadStatus handles GET/HEAD on blob upload URL (resume/status). If GET has ?digest=, client is committing the upload (no PATCH); delegate to commitBlobUpload so blob is created and we don't return "unknown blob".
+func handleBlobUploadStatus(w http.ResponseWriter, r *http.Request, path string) {
+	if r.Method == http.MethodGet && r.URL.Query().Get("digest") != "" {
+		commitBlobUpload(w, r, path)
 		return
 	}
-	w.Header().Set("Location", r.URL.Path)
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("Blob uploaded"))
+	parts := strings.SplitN(path, "/blobs/uploads/", 2)
+	if len(parts) != 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Invalid upload path"))
+		return
+	}
+	name := strings.TrimPrefix(strings.TrimSuffix(parts[0], "/"), "/")
+	if !validateRepoName(name) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid repository name"))
+		return
+	}
+	uploadID := strings.TrimSuffix(parts[1], "/")
+	if idx := strings.Index(uploadID, "?"); idx >= 0 {
+		uploadID = uploadID[:idx]
+	}
+	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
+	uploadPath = strings.TrimLeft(uploadPath, "/")
+	ctx := context.TODO()
+	size, _ := localDriver.Size(ctx, uploadPath)
+	endRange := size - 1
+	if size <= 0 {
+		endRange = 0
+	}
+	scheme := "http"
+	if r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	location := scheme + "://" + r.Host + "/v2/" + name + "/blobs/uploads/" + uploadID
+	secret := ""
+	if cfg != nil {
+		secret = cfg.JWTSecret
+	}
+	startedAt := time.Time{}
+	if prevState, err := unpackUploadState(secret, r.URL.Query().Get("_state")); err == nil && prevState.UUID == uploadID {
+		startedAt = prevState.StartedAt
+	}
+	state := blobUploadState{Name: name, UUID: uploadID, Offset: size, StartedAt: startedAt}
+	if token, err := packUploadState(secret, state); err == nil {
+		location += "?_state=" + token
+	}
+	w.Header().Set("Location", location)
+	w.Header().Set("Range", fmt.Sprintf("0-%d", endRange))
+	w.Header().Set("Docker-Upload-UUID", uploadID)
+	w.Header().Set("Content-Length", "0")
+	if size <= 0 {
+		w.WriteHeader(http.StatusNoContent)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+// handleBlobHead returns 200 + Docker-Content-Digest + Content-Length if blob exists on SFTP, else 404. Source of truth = SFTP only.
+func handleBlobHead(w http.ResponseWriter, r *http.Request, path string) {
+	name := strings.TrimPrefix(strings.TrimSuffix(strings.Split(path, "/blobs/")[0], "/"), "/")
+	if !validateRepoName(name) {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	blobPart := strings.Split(path, "/blobs/")[1]
+	if strings.Contains(blobPart, "..") || strings.Contains(blobPart, "/") {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, blobPart)
+	blobPath = strings.TrimLeft(blobPath, "/")
+	ctx := context.TODO()
+	fi, err := sftpDriver.Stat(ctx, blobPath)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+	type sizeable interface{ Size() int64 }
+	if s, ok := fi.(sizeable); ok {
+		w.Header().Set("Content-Length", strconv.FormatInt(s.Size(), 10))
+	}
+	w.Header().Set("Docker-Content-Digest", blobPart)
+	w.WriteHeader(http.StatusOK)
 }
 
 func handleBlobDownload(w http.ResponseWriter, path string) {
@@ -187,8 +468,7 @@ func handleBlobDownload(w http.ResponseWriter, path string) {
 	blobPath = strings.TrimLeft(blobPath, "/")
 	blob, err := sftpDriver.GetContent(context.TODO(), blobPath)
 	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("Blob not found on SFTP"))
+		registryError(w, "BLOB_UNKNOWN", "blob not found", http.StatusNotFound)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -356,29 +636,34 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			}
 			
 			if err != nil {
-				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("Manifest not found on SFTP"))
+				registryError(w, "MANIFEST_UNKNOWN", "manifest not found", http.StatusNotFound)
 				return
 			}
 		}
 		
-		// Set proper Content-Type header for manifest
-		// Cek apakah ini manifest list atau single manifest
+		// Rewrite Docker v2 media types to OCI so daemon accepts (pull expects OCI when configured).
+		manifest = rewriteManifestToOCI(manifest)
+
+		// Set Content-Type and digest for the bytes we're sending (OCI format).
 		var manifestData map[string]interface{}
 		if err := json.Unmarshal(manifest, &manifestData); err == nil {
 			if _, isList := manifestData["manifests"]; isList {
-				w.Header().Set("Content-Type", "application/vnd.docker.distribution.manifest.list.v2+json")
+				w.Header().Set("Content-Type", "application/vnd.oci.image.index.v1+json")
 			} else {
 				w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 			}
 		} else {
 			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 		}
-		
-		// Set Docker-Content-Digest header
 		manifestDigest := godigest.FromBytes(manifest)
 		w.Header().Set("Docker-Content-Digest", manifestDigest.String())
 		w.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
+		// Save OCI manifest by digest so pull-by-digest conforms to distribution spec (avoids "falling back to pull by tag" warning).
+		ociDigestPath := fmt.Sprintf("registry/%s/manifests/%s", name, manifestDigest.String())
+		ociDigestPath = strings.TrimLeft(ociDigestPath, "/")
+		if _, err := sftpDriver.Stat(context.TODO(), ociDigestPath); err != nil {
+			_ = sftpDriver.PutContent(context.TODO(), ociDigestPath, manifest, nil)
+		}
 		w.WriteHeader(http.StatusOK)
 		w.Write(manifest)
 	default:
@@ -421,6 +706,9 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	uploadID := parts[1]
+	if idx := strings.Index(uploadID, "?"); idx >= 0 {
+		uploadID = uploadID[:idx]
+	}
 	digest := r.URL.Query().Get("digest")
 	if digest == "" {
 		log.Printf("commitBlobUpload: missing digest query param")
@@ -503,9 +791,44 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 			w.Write([]byte("Blob committed (sync stream to SFTP, digest validated)"))
 			return
 		}
-		// n == 0: empty body (chunked upload), blob was sent via PATCHes — read from local, validate, upload to SFTP
+		// n == 0: empty body (chunked upload), blob was sent via PATCHes — read from local, validate, upload to SFTP. Or GET with digest and no PATCH (empty blob only).
 		localData, err := localDriver.GetContent(ctx, uploadPath)
 		if err != nil {
+			emptyDigest := godigest.FromBytes(nil).String()
+			parsedDigest, parseErr := godigest.Parse(digest)
+			if parseErr == nil && parsedDigest.String() == emptyDigest {
+				localData = []byte{}
+				if putErr := localDriver.PutContent(ctx, blobPath, localData, nil); putErr != nil && putErr != sftp.ErrRepoNotFound {
+					log.Printf("commitBlobUpload (sync empty): failed to write empty blob: %v", putErr)
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("Failed to write empty blob"))
+					return
+				}
+				if err := uploadBlobToSFTP(ctx, blobPath, blobPath, localData); err != nil {
+					log.Printf("commitBlobUpload (sync empty): SFTP upload failed: %v", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("Failed to upload blob to storage"))
+					return
+				}
+				w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, emptyDigest))
+				w.Header().Set("Docker-Content-Digest", emptyDigest)
+				w.WriteHeader(http.StatusCreated)
+				w.Write([]byte("Blob committed (empty)"))
+				return
+			}
+			// No local upload file and not empty blob: client may be mounting from existing blob (no PATCH sent). If blob exists on SFTP, accept.
+			if sftpDriver != nil {
+				if _, statErr := sftpDriver.Stat(ctx, blobPath); statErr == nil {
+					parsedDigest, parseErr := godigest.Parse(digest)
+					if parseErr == nil {
+						w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, parsedDigest.String()))
+						w.Header().Set("Docker-Content-Digest", parsedDigest.String())
+						w.WriteHeader(http.StatusCreated)
+						w.Write([]byte("Blob committed (mount from existing)"))
+						return
+					}
+				}
+			}
 			log.Printf("commitBlobUpload (sync chunked): failed to read local: %v", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to read blob from local: " + err.Error()))
@@ -544,7 +867,64 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Failed to read blob data: " + err.Error()))
 		return
 	}
+	var localData []byte
 	if len(body) == 0 {
+		// Validate digest before move so we don't leave a bad blob at blobPath on mismatch.
+		localData, err = localDriver.GetContent(ctx, uploadPath)
+		if err != nil {
+			// GET with digest but no PATCH: client commits without sending data (e.g. empty layer or mount). Only valid for empty blob.
+			emptyDigest := godigest.FromBytes(nil).String()
+			parsedDigest, parseErr := godigest.Parse(digest)
+			if parseErr == nil && parsedDigest.String() == emptyDigest {
+				localData = []byte{}
+				if putErr := localDriver.PutContent(ctx, blobPath, localData, nil); putErr != nil && putErr != sftp.ErrRepoNotFound {
+					log.Printf("commitBlobUpload: failed to write empty blob: %v", putErr)
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("Failed to write empty blob"))
+					return
+				}
+				if err := uploadBlobToSFTP(ctx, blobPath, blobPath, localData); err != nil {
+					log.Printf("commitBlobUpload: SFTP upload empty blob failed: %v", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("Failed to upload blob to storage"))
+					return
+				}
+				w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, emptyDigest))
+				w.Header().Set("Docker-Content-Digest", emptyDigest)
+				w.WriteHeader(http.StatusCreated)
+				w.Write([]byte("Blob committed (empty)"))
+				return
+			}
+			// Mount from existing blob on SFTP (no PATCH sent).
+			if sftpDriver != nil {
+				if _, statErr := sftpDriver.Stat(ctx, blobPath); statErr == nil {
+					parsedDigest, parseErr := godigest.Parse(digest)
+					if parseErr == nil {
+						w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, parsedDigest.String()))
+						w.Header().Set("Docker-Content-Digest", parsedDigest.String())
+						w.WriteHeader(http.StatusCreated)
+						w.Write([]byte("Blob committed (mount from existing)"))
+						return
+					}
+				}
+			}
+			log.Printf("commitBlobUpload: failed to read upload from local: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to read blob from local: " + err.Error()))
+			return
+		}
+		calculated := godigest.FromBytes(localData)
+		parsedDigest, parseErr := godigest.Parse(digest)
+		if parseErr != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("invalid checksum digest format (parse)"))
+			return
+		}
+		if calculated != parsedDigest {
+			log.Printf("commitBlobUpload: DIGEST_INVALID upload size %d, expected %s, got %s (incomplete chunked upload?)", len(localData), parsedDigest, calculated)
+			registryError(w, "DIGEST_INVALID", fmt.Sprintf("blob upload incomplete or digest mismatch (upload size %d)", len(localData)), 400)
+			return
+		}
 		err = localDriver.Move(ctx, uploadPath, blobPath)
 		if err != nil {
 			if err == sftp.ErrRepoNotFound {
@@ -568,27 +948,28 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 			w.Write([]byte("Failed to write blob to local: " + err.Error()))
 			return
 		}
-	}
-	localData, err := localDriver.GetContent(ctx, blobPath)
-	if err != nil {
-		log.Printf("commitBlobUpload: failed to read blob from local: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Failed to read blob from local: " + err.Error()))
-		return
-	}
-	calculated := godigest.FromBytes(localData)
-	parsedDigest, err := godigest.Parse(digest)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid checksum digest format (parse)"))
-		return
-	}
-	if calculated != parsedDigest {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid checksum digest format (mismatch)"))
-		return
+		localData, err = localDriver.GetContent(ctx, blobPath)
+		if err != nil {
+			log.Printf("commitBlobUpload: failed to read blob from local: %v", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to read blob from local: " + err.Error()))
+			return
+		}
+		calculated := godigest.FromBytes(localData)
+		parsedDigest, parseErr := godigest.Parse(digest)
+		if parseErr != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("invalid checksum digest format (parse)"))
+			return
+		}
+		if calculated != parsedDigest {
+			log.Printf("commitBlobUpload: DIGEST_INVALID (PUT with body) size %d", len(body))
+			registryError(w, "DIGEST_INVALID", "digest mismatch", 400)
+			return
+		}
 	}
 
+	calculated := godigest.FromBytes(localData)
 	doBlobUpload := func() error {
 		return uploadBlobToSFTP(ctx, blobPath, blobPath, localData)
 	}
@@ -624,10 +1005,20 @@ func uploadBlobToSFTP(ctx context.Context, localPath, sftpPath string, data []by
 	pathLock.Lock()
 	defer pathLock.Unlock()
 
-	if _, err := sftpDriver.Stat(ctx, sftpPath); err == nil {
-		log.Printf("[SFTP] SKIP: blob already exists: %s", sftpPath)
-		_ = localDriver.Delete(ctx, localPath)
-		return nil
+	wantSize := int64(len(data))
+	if fi, err := sftpDriver.Stat(ctx, sftpPath); err == nil {
+		type sizeable interface{ Size() int64 }
+		var existing int64
+		if s, ok := fi.(sizeable); ok {
+			existing = s.Size()
+			if existing == wantSize {
+				log.Printf("[SFTP] SKIP: blob already exists (same size): %s", sftpPath)
+				_ = localDriver.Delete(ctx, localPath)
+				return nil
+			}
+		}
+		_ = sftpDriver.Delete(ctx, sftpPath)
+		log.Printf("[SFTP] Overwrite: replacing blob (existing %d vs %d): %s", existing, wantSize, sftpPath)
 	}
 
 	log.Printf("[SFTP] Start upload: %s -> %s", localPath, sftpPath)
@@ -635,7 +1026,10 @@ func uploadBlobToSFTP(ctx context.Context, localPath, sftpPath string, data []by
 	var err error
 	for i := 0; i < maxRetry; i++ {
 		err = sftpDriver.PutContent(ctx, sftpPath, data, func(written, total int64) {
-			percent := written * 100 / total
+			percent := int64(0)
+			if total > 0 {
+				percent = written * 100 / total
+			}
 			log.Printf("[SFTP] Progress: %s -> %s: %d%% (%d/%d bytes)", localPath, sftpPath, percent, written, total)
 		})
 		if err == nil {
@@ -712,7 +1106,13 @@ func handleSignatures(w http.ResponseWriter, r *http.Request, path string) {
 	// Parse path but don't use variables for now since we're just returning empty responses
 	_ = strings.TrimPrefix(strings.Split(path, "/signatures/")[0], "/")
 	_ = strings.Split(path, "/signatures/")[1]
-	
+
+	// Drain body when we don't use it so connection can be reused (same as initiateBlobUpload)
+	if r.Body != nil && (r.Method == http.MethodPost || r.Method == http.MethodDelete) {
+		io.Copy(io.Discard, r.Body)
+		r.Body.Close()
+	}
+
 	switch r.Method {
 	case http.MethodGet:
 		// Return empty signatures list - Docker expects this endpoint to exist
