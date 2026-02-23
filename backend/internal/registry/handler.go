@@ -513,6 +513,8 @@ func handleBlobDownload(w http.ResponseWriter, path string) {
 		registryError(w, "BLOB_UNKNOWN", "blob not found", http.StatusNotFound)
 		return
 	}
+	w.Header().Set("Content-Length", strconv.Itoa(len(blob)))
+	w.Header().Set("Docker-Content-Digest", blobPart)
 	w.WriteHeader(http.StatusOK)
 	w.Write(blob)
 }
@@ -698,6 +700,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			w.Header().Set("Content-Type", "application/vnd.oci.image.manifest.v1+json")
 		}
 		manifestDigest := godigest.FromBytes(manifest)
+		w.Header().Set("Content-Length", strconv.Itoa(len(manifest)))
 		w.Header().Set("Docker-Content-Digest", manifestDigest.String())
 		w.Header().Set("Docker-Distribution-Api-Version", "registry/2.0")
 		// Save OCI manifest by digest so pull-by-digest conforms to distribution spec (avoids "falling back to pull by tag" warning).
