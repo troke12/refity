@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"strings"
 	"time"
 	"golang.org/x/crypto/bcrypt"
 	"log"
@@ -95,7 +96,7 @@ func (d *Database) createTables() error {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
 			tag TEXT NOT NULL,
-			digest TEXT NOT NULL UNIQUE,
+			digest TEXT NOT NULL,
 			size INTEGER NOT NULL,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			UNIQUE(name, tag)
@@ -103,6 +104,47 @@ func (d *Database) createTables() error {
 	`)
 	if err != nil {
 		return err
+	}
+
+	// Migration: remove UNIQUE constraint from digest column (if old schema)
+	// SQLite doesn't support ALTER TABLE DROP CONSTRAINT, so recreate the table.
+	var hasUniqueDigest bool
+	{
+		migRows, qErr := d.db.Query(`SELECT sql FROM sqlite_master WHERE type='table' AND name='images'`)
+		if qErr == nil {
+			for migRows.Next() {
+				var ddl string
+				if migRows.Scan(&ddl) == nil {
+					if strings.Contains(ddl, "digest TEXT NOT NULL UNIQUE") {
+						hasUniqueDigest = true
+					}
+				}
+			}
+			migRows.Close()
+		}
+	}
+	if hasUniqueDigest {
+		log.Println("Migrating images table: removing UNIQUE constraint from digest column...")
+		_, err = d.db.Exec(`
+			CREATE TABLE images_new (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				name TEXT NOT NULL,
+				tag TEXT NOT NULL,
+				digest TEXT NOT NULL,
+				size INTEGER NOT NULL,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				UNIQUE(name, tag)
+			);
+			INSERT INTO images_new (id, name, tag, digest, size, created_at)
+				SELECT id, name, tag, digest, size, created_at FROM images;
+			DROP TABLE images;
+			ALTER TABLE images_new RENAME TO images;
+		`)
+		if err != nil {
+			log.Printf("Warning: migration failed: %v", err)
+		} else {
+			log.Println("Migration complete: images table updated")
+		}
 	}
 
 	// Create repositories table
@@ -279,8 +321,12 @@ func (d *Database) DeleteUser(id int64) error {
 // Image operations
 func (d *Database) CreateImage(name, tag, digest string, size int64) (*Image, error) {
 	result, err := d.db.Exec(`
-		INSERT OR REPLACE INTO images (name, tag, digest, size, created_at)
+		INSERT INTO images (name, tag, digest, size, created_at)
 		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(name, tag) DO UPDATE SET
+			digest = excluded.digest,
+			size = excluded.size,
+			created_at = CURRENT_TIMESTAMP
 	`, name, tag, digest, size)
 	if err != nil {
 		return nil, err
