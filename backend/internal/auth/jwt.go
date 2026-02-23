@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -59,6 +60,10 @@ func ValidateToken(tokenString string) (*Claims, error) {
 	return nil, errors.New("invalid token")
 }
 
+type contextKey string
+
+const claimsContextKey contextKey = "claims"
+
 func JWTMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
@@ -80,9 +85,10 @@ func JWTMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Add user info to request context
-		r = r.WithContext(r.Context())
-		// Store claims in header for handlers to access
+		// Store claims in request context (not headers — tamper-proof)
+		ctx := context.WithValue(r.Context(), claimsContextKey, claims)
+		r = r.WithContext(ctx)
+		// Keep headers for backward compat but they're not trusted
 		r.Header.Set("X-User-ID", fmt.Sprintf("%d", claims.UserID))
 		r.Header.Set("X-Username", claims.Username)
 		r.Header.Set("X-Role", claims.Role)
@@ -91,7 +97,22 @@ func JWTMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+func AdminMiddleware(next http.Handler) http.Handler {
+	return JWTMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		role := r.Header.Get("X-Role")
+		if role != "admin" {
+			http.Error(w, "Forbidden: admin access required", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	}))
+}
+
 func GetUserFromRequest(r *http.Request) (int64, string, string) {
+	if claims, ok := r.Context().Value(claimsContextKey).(*Claims); ok {
+		return claims.UserID, claims.Username, claims.Role
+	}
+	// Fallback to headers (should not happen if middleware ran)
 	userIDStr := r.Header.Get("X-User-ID")
 	username := r.Header.Get("X-Username")
 	role := r.Header.Get("X-Role")

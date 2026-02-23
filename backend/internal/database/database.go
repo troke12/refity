@@ -1,7 +1,9 @@
 package database
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"strings"
 	"time"
 	"golang.org/x/crypto/bcrypt"
@@ -204,30 +206,44 @@ func (d *Database) createTables() error {
 }
 
 func (d *Database) createDefaultAdmin() error {
-	// Check if admin user already exists
+	// Check if any user exists
 	var count int
-	err := d.db.QueryRow(`SELECT COUNT(*) FROM users WHERE username = 'admin'`).Scan(&count)
+	err := d.db.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count)
 	if err != nil {
 		return err
 	}
 
 	if count > 0 {
-		return nil // Admin already exists
+		return nil // Users already exist
 	}
 
-	// Hash default password "admin"
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin"), bcrypt.DefaultCost)
+	// Generate random password
+	b := make([]byte, 12)
+	if _, err := rand.Read(b); err != nil {
+		return err
+	}
+	password := hex.EncodeToString(b)
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 
-	// Create admin user
 	_, err = d.db.Exec(`
 		INSERT INTO users (username, password_hash, role, created_at)
 		VALUES (?, ?, 'admin', CURRENT_TIMESTAMP)
 	`, "admin", string(hashedPassword))
-	
-	return err
+	if err != nil {
+		return err
+	}
+
+	log.Println("==========================================================")
+	log.Println("  DEFAULT ADMIN ACCOUNT CREATED")
+	log.Printf("  Username: admin")
+	log.Printf("  Password: %s", password)
+	log.Println("  CHANGE THIS PASSWORD IMMEDIATELY AFTER FIRST LOGIN")
+	log.Println("==========================================================")
+	return nil
 }
 
 func (d *Database) Close() error {

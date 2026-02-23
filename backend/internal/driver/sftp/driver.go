@@ -68,6 +68,7 @@ func hostKeyCallback(cfg *config.Config) (ssh.HostKeyCallback, error) {
 	if cfg.FTPKnownHosts != "" {
 		return knownhosts.New(cfg.FTPKnownHosts)
 	}
+	log.Println("WARNING: FTP_KNOWN_HOSTS not set. SSH host key verification is DISABLED. This is vulnerable to MITM attacks. Set FTP_KNOWN_HOSTS in production.")
 	return ssh.InsecureIgnoreHostKey(), nil
 }
 

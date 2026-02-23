@@ -105,11 +105,13 @@ func main() {
 	if port == "" {
 		port = "5000"
 	}
-	// No ReadTimeout/WriteTimeout so long blob uploads (Singapore→Germany) don't get cut
+	// No ReadTimeout/WriteTimeout so long blob uploads (Singapore→Germany) don't get cut.
+	// ReadHeaderTimeout protects against Slowloris; IdleTimeout reclaims idle keep-alive connections.
 	srv := &http.Server{
 		Addr:              ":" + port,
 		Handler:           handler,
-		ReadHeaderTimeout: 60 * time.Second, // slowloris protection only
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	log.Printf("Backend server listening on :%s", port)
 	if err := srv.ListenAndServe(); err != nil {

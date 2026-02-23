@@ -31,7 +31,7 @@ type blobUploadState struct {
 
 func packUploadState(secret string, state blobUploadState) (string, error) {
 	if secret == "" {
-		secret = "refity-secret-key-change-in-production"
+		return "", fmt.Errorf("JWT secret is not configured")
 	}
 	mac := hmac.New(sha256.New, []byte(secret))
 	p, err := json.Marshal(state)
@@ -48,7 +48,7 @@ func unpackUploadState(secret, token string) (blobUploadState, error) {
 		return state, fmt.Errorf("empty _state")
 	}
 	if secret == "" {
-		secret = "refity-secret-key-change-in-production"
+		return state, fmt.Errorf("JWT secret is not configured")
 	}
 	tokenBytes, err := base64.URLEncoding.DecodeString(token)
 	if err != nil {
@@ -81,20 +81,27 @@ func rewriteManifestToOCI(manifest []byte) []byte {
 }
 
 // validRepoName restricts repo name to avoid path traversal and invalid chars (Docker: alphanumeric, separators, one optional /)
-var validRepoName = regexp.MustCompile(`^[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)?$`)
+var validRepoName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*(/[a-zA-Z0-9][a-zA-Z0-9._-]*)?$`)
+
+// validDigest validates Docker content digest format: algorithm:hex
+var validDigest = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
 
 func validateRepoName(name string) bool {
-	if name == "" || strings.Contains(name, "..") {
+	if name == "" || len(name) > 256 || strings.Contains(name, "..") {
 		return false
 	}
 	return validRepoName.MatchString(name)
 }
 
 func validateManifestRef(ref string) bool {
-	if ref == "" || strings.Contains(ref, "..") || strings.Contains(ref, "/") || strings.Contains(ref, "\\") {
+	if ref == "" || len(ref) > 128 || strings.ContainsAny(ref, "../\\") || strings.Contains(ref, "\x00") {
 		return false
 	}
 	return true
+}
+
+func validateBlobDigest(digest string) bool {
+	return validDigest.MatchString(digest)
 }
 
 var sftpSemaphore = make(chan struct{}, 2) // max 2 upload paralel
@@ -473,7 +480,7 @@ func handleBlobHead(w http.ResponseWriter, r *http.Request, path string) {
 		return
 	}
 	blobPart := strings.Split(path, "/blobs/")[1]
-	if strings.Contains(blobPart, "..") || strings.Contains(blobPart, "/") {
+	if !validateBlobDigest(blobPart) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -501,9 +508,9 @@ func handleBlobDownload(w http.ResponseWriter, path string) {
 		return
 	}
 	blobPart := strings.Split(path, "/blobs/")[1]
-	if strings.Contains(blobPart, "..") || strings.Contains(blobPart, "/") {
+	if !validateBlobDigest(blobPart) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("invalid blob path"))
+		w.Write([]byte("invalid blob digest format"))
 		return
 	}
 	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, blobPart)

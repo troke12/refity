@@ -658,7 +658,6 @@ func (h *APIHandler) FTPUsageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	bodyStr := bodyBuf.String()
 	log.Printf("Hetzner API response status: %d", resp.StatusCode)
 
 	// Parse rate limit headers before checking status
@@ -704,11 +703,11 @@ func (h *APIHandler) FTPUsageHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Hetzner API returned non-200 status: %d, response: %s", resp.StatusCode, bodyStr)
+		log.Printf("Hetzner API returned non-200 status: %d", resp.StatusCode)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"error": fmt.Sprintf("Hetzner API error: status %d, response: %s", resp.StatusCode, bodyStr),
+			"error": fmt.Sprintf("Hetzner API error: status %d", resp.StatusCode),
 		})
 		return
 	}
@@ -717,7 +716,7 @@ func (h *APIHandler) FTPUsageHandler(w http.ResponseWriter, r *http.Request) {
 	// Try to decode the response - handle different possible structures
 	var apiResponse map[string]interface{}
 	if err := json.Unmarshal(bodyBuf.Bytes(), &apiResponse); err != nil {
-		log.Printf("Failed to decode Hetzner API response as JSON: %v, body: %s", err, bodyStr)
+		log.Printf("Failed to decode Hetzner API response as JSON: %v", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -726,7 +725,7 @@ func (h *APIHandler) FTPUsageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Decoded API response: %+v", apiResponse)
+	log.Printf("Hetzner API response decoded successfully")
 
 	// Extract storage_box data - handle nested structure
 	var storageBox map[string]interface{}

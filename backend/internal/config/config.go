@@ -1,7 +1,10 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 )
@@ -27,7 +30,12 @@ func LoadConfig() *Config {
 	}
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		jwtSecret = "refity-secret-key-change-in-production" // dev only; production must set JWT_SECRET
+		b := make([]byte, 32)
+		if _, err := rand.Read(b); err != nil {
+			panic("failed to generate random JWT secret: " + err.Error())
+		}
+		jwtSecret = hex.EncodeToString(b)
+		log.Println("WARNING: JWT_SECRET not set. Generated random secret for this session. Tokens will be invalidated on restart. Set JWT_SECRET in production.")
 	}
 	corsOrigins := []string{"http://localhost:8080", "http://127.0.0.1:8080"}
 	if s := os.Getenv("CORS_ORIGINS"); s != "" {

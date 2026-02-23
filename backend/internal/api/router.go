@@ -68,7 +68,7 @@ func (r *APIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 		if req.Method == http.MethodPost {
-			auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.CreateGroupHandler)).ServeHTTP(w, req)
+			auth.AdminMiddleware(http.HandlerFunc(r.apiHandler.CreateGroupHandler)).ServeHTTP(w, req)
 			return
 		}
 	}
@@ -92,16 +92,16 @@ func (r *APIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		if repoPath == "" {
 			// POST /api/repositories (create)
 			if req.Method == http.MethodPost {
-				auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.CreateRepositoryHandler)).ServeHTTP(w, req)
+				auth.AdminMiddleware(http.HandlerFunc(r.apiHandler.CreateRepositoryHandler)).ServeHTTP(w, req)
 				return
 			}
 		} else if strings.Contains(repoPath, "/tags/") && req.Method == http.MethodDelete {
 			// DELETE /api/repositories/{repo}/tags/{tag}
-			auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.DeleteTagHandler)).ServeHTTP(w, req)
+			auth.AdminMiddleware(http.HandlerFunc(r.apiHandler.DeleteTagHandler)).ServeHTTP(w, req)
 			return
 		} else if req.Method == http.MethodDelete {
 			// DELETE /api/repositories/{repo}
-			auth.JWTMiddleware(http.HandlerFunc(r.apiHandler.DeleteRepositoryHandler)).ServeHTTP(w, req)
+			auth.AdminMiddleware(http.HandlerFunc(r.apiHandler.DeleteRepositoryHandler)).ServeHTTP(w, req)
 			return
 		}
 	}
