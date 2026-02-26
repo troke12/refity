@@ -381,7 +381,15 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("Failed to read blob data"))
 		return
 	}
-	// Total after this chunk (no need to stat; send 202 before Close so client gets response fast and can send next PATCH).
+	// Close writer before responding so data is fully flushed to disk.
+	// This prevents a race where Docker sends PUT on a different connection
+	// before the file is fully written.
+	if err := dest.Close(); err != nil {
+		log.Printf("uploadBlobData: writer close failed: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to finalize chunk write"))
+		return
+	}
 	totalSize := sizeBefore + n
 	endRange := totalSize - 1
 	if totalSize == 0 {
@@ -411,10 +419,6 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		f.Flush()
 	}
 	log.Printf("uploadBlobData: 202 sent for %s (Range 0-%d, +%d this chunk)", path, endRange, n)
-	// Close after response so client isn't waiting on disk sync; may help high-latency clients send next PATCH.
-	if err := dest.Close(); err != nil {
-		log.Printf("uploadBlobData: writer close after 202: %v", err)
-	}
 }
 
 // handleBlobUploadStatus handles GET/HEAD on blob upload URL (resume/status). If GET has ?digest=, client is committing the upload (no PATCH); delegate to commitBlobUpload so blob is created and we don't return "unknown blob".

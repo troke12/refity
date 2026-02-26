@@ -101,8 +101,46 @@ func NewDriverPool(cfg *config.Config, poolSize int) (*DriverPool, error) {
 	return &DriverPool{clients: clients, cfg: cfg}, nil
 }
 
+func (p *DriverPool) newClient() (*sftp.Client, error) {
+	hk, err := hostKeyCallback(p.cfg)
+	if err != nil {
+		return nil, err
+	}
+	addr := p.cfg.FTPHost + ":" + p.cfg.FTPPort
+	sshConfig := &ssh.ClientConfig{
+		User:            p.cfg.FTPUsername,
+		Auth:            []ssh.AuthMethod{ssh.Password(p.cfg.FTPPassword)},
+		HostKeyCallback: hk,
+		Timeout:         10 * time.Second,
+	}
+	conn, err := ssh.Dial("tcp", addr, sshConfig)
+	if err != nil {
+		return nil, err
+	}
+	client, err := sftp.NewClient(conn)
+	if err != nil {
+		conn.Close()
+		return nil, err
+	}
+	return client, nil
+}
+
 func (p *DriverPool) getClient() *sftp.Client {
-	return <-p.clients
+	client := <-p.clients
+	// Health check: try a simple operation to verify connection is alive
+	if _, err := client.Getwd(); err != nil {
+		log.Printf("[SFTP] Pool: stale connection detected, reconnecting...")
+		client.Close()
+		newClient, newErr := p.newClient()
+		if newErr != nil {
+			log.Printf("[SFTP] Pool: reconnect failed: %v, returning stale client", newErr)
+			// Return a fresh attempt anyway; caller will get an error
+			return client
+		}
+		log.Printf("[SFTP] Pool: reconnected successfully")
+		return newClient
+	}
+	return client
 }
 
 func (p *DriverPool) putClient(c *sftp.Client) {
@@ -132,12 +170,6 @@ func (d *PoolStorageDriver) PutContent(ctx context.Context, path string, content
 	client := d.Pool.getClient()
 	defer d.Pool.putClient(client)
 	dir := pathpkg.Dir(path)
-	group := groupFolder(dir)
-	if group != "" {
-		if _, err := client.Stat(group); err != nil {
-			return ErrRepoNotFound
-		}
-	}
 	if err := ensureDirWithClient(client, dir); err != nil {
 		return err
 	}
@@ -324,12 +356,6 @@ func ensureDirWithClient(client *sftp.Client, dir string) error {
 		return nil
 	}
 	parts := strings.Split(dir, "/")
-	if len(parts) >= 2 && parts[0] == "registry" {
-		group := parts[0] + "/" + parts[1]
-		if _, err := client.Stat(group); err != nil {
-			return ErrRepoNotFound
-		}
-	}
 	current := ""
 	for _, p := range parts {
 		if p == "" {
@@ -399,12 +425,6 @@ func (d *Driver) GetContent(ctx context.Context, path string) ([]byte, error) {
 
 func (d *Driver) PutContent(ctx context.Context, path string, content []byte, progressCb ...func(written, total int64)) error {
 	dir := pathpkg.Dir(path)
-	group := groupFolder(dir)
-	if group != "" {
-		if _, err := d.client.Stat(group); err != nil {
-			return ErrRepoNotFound
-		}
-	}
 	if err := d.ensureDir(dir); err != nil {
 		return err
 	}
@@ -519,12 +539,6 @@ func (d *Driver) List(ctx context.Context, path string) ([]string, error) {
 
 func (d *Driver) Move(ctx context.Context, sourcePath string, destPath string) error {
 	dir := pathpkg.Dir(destPath)
-	group := groupFolder(dir)
-	if group != "" {
-		if _, err := d.client.Stat(group); err != nil {
-			return ErrRepoNotFound
-		}
-	}
 	if err := d.ensureDir(dir); err != nil {
 		return err
 	}
@@ -667,12 +681,6 @@ func (d *Driver) ensureDir(dir string) error {
 		return nil
 	}
 	parts := strings.Split(dir, "/")
-	if len(parts) >= 2 && parts[0] == "registry" {
-		group := parts[0] + "/" + parts[1]
-		if _, err := d.client.Stat(group); err != nil {
-			return ErrRepoNotFound
-		}
-	}
 	current := ""
 	for _, p := range parts {
 		if p == "" {
@@ -696,13 +704,6 @@ func filepathBase(p string) string {
 	return parts[len(parts)-1]
 }
 
-func groupFolder(dir string) string {
-	parts := strings.Split(dir, "/")
-	if len(parts) >= 2 && parts[0] == "registry" {
-		return parts[0] + "/" + parts[1]
-	}
-	return ""
-}
 
 // FileWriter implementasi dasar untuk SFTP
 
@@ -766,12 +767,6 @@ func (d *PoolStorageDriver) Move(ctx context.Context, sourcePath string, destPat
 	client := d.Pool.getClient()
 	defer d.Pool.putClient(client)
 	dir := pathpkg.Dir(destPath)
-	group := groupFolder(dir)
-	if group != "" {
-		if _, err := client.Stat(group); err != nil {
-			return ErrRepoNotFound
-		}
-	}
 	if err := ensureDirWithClient(client, dir); err != nil {
 		return err
 	}
