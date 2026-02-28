@@ -179,6 +179,7 @@ func (d *PoolStorageDriver) PutContent(ctx context.Context, path string, content
 	}
 	var writeErr error
 	defer func() {
+		f.Close()
 		if writeErr != nil {
 			_ = client.Remove(path)
 		}
@@ -434,6 +435,7 @@ func (d *Driver) PutContent(ctx context.Context, path string, content []byte, pr
 	}
 	var writeErr error
 	defer func() {
+		f.Close()
 		if writeErr != nil {
 			_ = d.client.Remove(path) // hapus file broken jika gagal
 		}
