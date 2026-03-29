@@ -587,6 +587,15 @@ func (d *Database) CreateGroup(name string) error {
 	return err
 }
 
+// EnsureGroup inserts the group row if missing (idempotent). Used when a push uses group/repo before the group exists in the UI.
+func (d *Database) EnsureGroup(name string) error {
+	_, err := d.db.Exec(`
+		INSERT OR IGNORE INTO groups (name, created_at)
+		VALUES (?, CURRENT_TIMESTAMP)
+	`, name)
+	return err
+}
+
 // GetGroups returns all unique groups from both the groups table and repository names
 func (d *Database) GetGroups() ([]string, error) {
 	// Get groups from groups table

@@ -93,6 +93,31 @@ func validateRepoName(name string) bool {
 	return validRepoName.MatchString(name)
 }
 
+// validateRepoNameForPush requires group/repo (at least one '/') so images are not pushed at registry root.
+func validateRepoNameForPush(name string) bool {
+	return validateRepoName(name) && strings.Contains(name, "/")
+}
+
+// autoEnsureGroupForPush records the path prefix as a group (DB + SFTP) so docker push group/repo works without pre-creating the group in the UI.
+func autoEnsureGroupForPush(repoName string) {
+	idx := strings.IndexByte(repoName, '/')
+	if idx <= 0 {
+		return
+	}
+	group := repoName[:idx]
+	ctx := context.TODO()
+	if db != nil {
+		if err := db.EnsureGroup(group); err != nil {
+			log.Printf("autoEnsureGroupForPush: EnsureGroup %q: %v", group, err)
+		}
+	}
+	if sftpDriver != nil {
+		if err := sftpDriver.CreateGroupFolder(ctx, group); err != nil {
+			log.Printf("autoEnsureGroupForPush: CreateGroupFolder %q: %v", group, err)
+		}
+	}
+}
+
 func validateManifestRef(ref string) bool {
 	if ref == "" || len(ref) > 128 || strings.ContainsAny(ref, "../\\") || strings.Contains(ref, "\x00") {
 		return false
@@ -179,6 +204,11 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("invalid repository name"))
 		return
 	}
+	if !validateRepoNameForPush(name) {
+		registryError(w, "NAME_INVALID", "repository name must include a group prefix, e.g. mygroup/myimage", http.StatusBadRequest)
+		return
+	}
+	autoEnsureGroupForPush(name)
 
 	// Auto-create repository if it doesn't exist (Docker registry standard behavior)
 	if db != nil {
@@ -353,6 +383,11 @@ func uploadBlobData(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("invalid repository name"))
 		return
 	}
+	if !validateRepoNameForPush(name) {
+		registryError(w, "NAME_INVALID", "repository name must include a group prefix, e.g. mygroup/myimage", http.StatusBadRequest)
+		return
+	}
+	autoEnsureGroupForPush(name)
 	uploadID := strings.TrimSuffix(parts[1], "/")
 	if idx := strings.Index(uploadID, "?"); idx >= 0 {
 		uploadID = uploadID[:idx]
@@ -547,6 +582,11 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 	manifestPath = strings.TrimLeft(manifestPath, "/")
 	switch r.Method {
 	case http.MethodPut:
+		if !validateRepoNameForPush(name) {
+			registryError(w, "NAME_INVALID", "repository name must include a group prefix, e.g. mygroup/myimage", http.StatusBadRequest)
+			return
+		}
+		autoEnsureGroupForPush(name)
 		// Auto-create repository if it doesn't exist (Docker registry standard behavior)
 		if db != nil {
 			if _, err := db.GetRepository(name); err != nil {
@@ -567,8 +607,7 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 				}
 			}
 		}
-		
-		// Skip group folder check for now - it's causing 403 errors
+
 		manifest, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -761,6 +800,11 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		w.Write([]byte("invalid repository name"))
 		return
 	}
+	if !validateRepoNameForPush(name) {
+		registryError(w, "NAME_INVALID", "repository name must include a group prefix, e.g. mygroup/myimage", http.StatusBadRequest)
+		return
+	}
+	autoEnsureGroupForPush(name)
 	uploadID := parts[1]
 	if idx := strings.Index(uploadID, "?"); idx >= 0 {
 		uploadID = uploadID[:idx]
