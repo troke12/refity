@@ -373,30 +373,34 @@ func (d *PoolStorageDriver) PutContent(ctx context.Context, path string, content
 }
 
 func (d *PoolStorageDriver) CreateRepositoryFolder(ctx context.Context, repoName string) error {
-	client := d.Pool.getClient()
-	if client == nil {
-		return fmt.Errorf("SFTP unavailable")
-	}
-	defer d.Pool.putClient(client)
-	repoPath := "registry/" + repoName
-	if err := createDirRecursiveWithClient(client, repoPath); err != nil {
-		return fmt.Errorf("create repo folder: %w", err)
-	}
-	for _, sub := range []string{"/blobs", "/blobs/uploads", "/manifests"} {
-		if err := createDirRecursiveWithClient(client, repoPath+sub); err != nil {
-			return fmt.Errorf("create %s: %w", sub, err)
+	return retrySFTPOperation(fmt.Sprintf("CreateRepositoryFolder(%s)", repoName), 5, func() error {
+		client := d.Pool.getClient()
+		if client == nil {
+			return fmt.Errorf("SFTP unavailable")
 		}
-	}
-	return nil
+		defer d.Pool.putClient(client)
+		repoPath := "registry/" + repoName
+		if err := createDirRecursiveWithClient(client, repoPath); err != nil {
+			return fmt.Errorf("create repo folder: %w", err)
+		}
+		for _, sub := range []string{"/blobs", "/blobs/uploads", "/manifests"} {
+			if err := createDirRecursiveWithClient(client, repoPath+sub); err != nil {
+				return fmt.Errorf("create %s: %w", sub, err)
+			}
+		}
+		return nil
+	})
 }
 
 func (d *PoolStorageDriver) CreateGroupFolder(ctx context.Context, groupName string) error {
-	client := d.Pool.getClient()
-	if client == nil {
-		return fmt.Errorf("SFTP unavailable")
-	}
-	defer d.Pool.putClient(client)
-	return createDirRecursiveWithClient(client, "registry/"+groupName)
+	return retrySFTPOperation(fmt.Sprintf("CreateGroupFolder(%s)", groupName), 5, func() error {
+		client := d.Pool.getClient()
+		if client == nil {
+			return fmt.Errorf("SFTP unavailable")
+		}
+		defer d.Pool.putClient(client)
+		return createDirRecursiveWithClient(client, "registry/"+groupName)
+	})
 }
 
 func (d *PoolStorageDriver) DeleteRepositoryFolder(ctx context.Context, repoName string) error {
@@ -895,6 +899,44 @@ func filepathBase(p string) string {
 	}
 	parts := strings.Split(p, "/")
 	return parts[len(parts)-1]
+}
+
+// IsConnectionLost returns true if the error is a transient SFTP connection failure.
+func IsConnectionLost(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return strings.Contains(s, "connection lost") ||
+		strings.Contains(s, "connection refused") ||
+		strings.Contains(s, "EOF") ||
+		strings.Contains(s, "i/o timeout") ||
+		strings.Contains(s, "ssh: connection closed") ||
+		strings.Contains(s, "use of closed network connection") ||
+		strings.Contains(s, "request failed")
+}
+
+// retrySFTPOperation wraps an SFTP operation with retry on transient failures.
+// If all retries fail, the last error is returned.
+func retrySFTPOperation(desc string, maxRetries int, fn func() error) error {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !IsConnectionLost(err) {
+			return err
+		}
+		backoff := time.Duration(1<<i) * time.Second
+		if backoff > 16*time.Second {
+			backoff = 16 * time.Second
+		}
+		log.Printf("[SFTP] Retry %d/%d %s failed: %v, retrying in %v", i+1, maxRetries, desc, err, backoff)
+		time.Sleep(backoff)
+	}
+	return fmt.Errorf("%s: all %d retries failed: %w", desc, maxRetries, lastErr)
 }
 
 func checkNoSpace(client *sftp.Client, dir string, size int64, origErr error) {

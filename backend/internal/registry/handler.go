@@ -132,6 +132,28 @@ func validateBlobDigest(digest string) bool {
 var sftpSemaphore = make(chan struct{}, 2) // max 2 upload paralel
 var sftpPathLocks sync.Map // map[string]*sync.Mutex
 
+// sftpRetry wraps an SFTP operation with retry on transient connection failures.
+func sftpRetry(desc string, maxRetries int, fn func() error) error {
+	var lastErr error
+	for i := 0; i < maxRetries; i++ {
+		err := fn()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !sftp.IsConnectionLost(err) {
+			return err
+		}
+		backoff := time.Duration(1<<i) * time.Second
+		if backoff > 10*time.Second {
+			backoff = 10 * time.Second
+		}
+		log.Printf("[SFTP] Retry %d/%d %s failed: %v, retrying in %v", i+1, maxRetries, desc, err, backoff)
+		time.Sleep(backoff)
+	}
+	return fmt.Errorf("%s: all %d retries failed: %w", desc, maxRetries, lastErr)
+}
+
 // Handler untuk endpoint Docker Registry API v2
 func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/v2/")
@@ -248,7 +270,12 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 
 		if cfg != nil && cfg.SFTPSyncUpload {
 			// Sync mode: stream body directly to SFTP while hashing.
-			sftpWriter, err := sftpDriver.Writer(ctx, blobPath, false)
+			var sftpWriter sftp.FileWriter
+			err := sftpRetry("Writer("+blobPath+")", 3, func() error {
+				var innerErr error
+				sftpWriter, innerErr = sftpDriver.Writer(ctx, blobPath, false)
+				return innerErr
+			})
 			if err != nil {
 				if err == sftp.ErrRepoNotFound {
 					registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
@@ -847,7 +874,12 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 	// Sync mode + monolithic upload: stream r.Body directly to SFTP while hashing.
 	// Client progress bar then moves in sync with our SFTP write (we read body only as fast as we write to SFTP).
 	if cfg != nil && cfg.SFTPSyncUpload && r.Body != nil {
-		sftpWriter, err := sftpDriver.Writer(ctx, blobPath, false)
+		var sftpWriter sftp.FileWriter
+		err := sftpRetry("Writer("+blobPath+")", 3, func() error {
+			var innerErr error
+			sftpWriter, innerErr = sftpDriver.Writer(ctx, blobPath, false)
+			return innerErr
+		})
 		if err != nil {
 			if err == sftp.ErrRepoNotFound {
 				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
