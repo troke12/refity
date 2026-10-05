@@ -11,6 +11,7 @@ import (
 	"refity/backend/internal/driver/sftp"
 	"refity/backend/internal/database"
 	"refity/backend/internal/config"
+	"refity/backend/internal/registry"
 	"log"
 	"sync"
 	"time"
@@ -64,9 +65,14 @@ type Repository struct {
 }
 
 type DashboardData struct {
-	Groups       []Group      `json:"groups"`
-	TotalImages  int          `json:"total_images"`
-	TotalSize    int64        `json:"total_size"`
+	Groups      []Group      `json:"groups"`
+	TotalImages int          `json:"total_images"`
+	TotalSize   int64        `json:"total_size"`
+	// Spool is the registry's pending-upload backlog (absent when the registry storage is not running).
+	Spool *registry.SpoolHealth `json:"spool,omitempty"`
+	// Corrupt lists blobs that were found holding the wrong bytes and removed. Each one is missing from
+	// the remote until it is pushed again, so this is the operator's work list, not an error count.
+	Corrupt *registry.CorruptHealth `json:"corrupt,omitempty"`
 }
 
 type Group struct {
@@ -103,11 +109,18 @@ func (h *APIHandler) getDashboardData() DashboardData {
 		})
 	}
 
-	return DashboardData{
+	data := DashboardData{
 		Groups:      groups,
 		TotalImages: totalImages,
 		TotalSize:   totalSize,
 	}
+	if st, ok := registry.SpoolStats(); ok {
+		data.Spool = &st
+	}
+	if ch, ok := registry.CorruptStats(); ok {
+		data.Corrupt = &ch
+	}
+	return data
 }
 
 func (h *APIHandler) DashboardHandler(w http.ResponseWriter, r *http.Request) {
@@ -266,6 +279,11 @@ func (h *APIHandler) DeleteRepositoryHandler(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "Failed to delete repository", http.StatusInternalServerError)
 		return
 	}
+
+	// Only once the repository is really gone from the DB: drop its pending uploads and cached objects
+	// before deleting the remote folder, so an in-flight upload cannot re-create the folder and a cached
+	// copy cannot keep the image pullable.
+	registry.PurgeRepo(repo)
 
 	// Delete repository folder structure from SFTP
 	err = h.sftpDriver.DeleteRepositoryFolder(context.TODO(), repo)

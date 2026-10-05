@@ -1,9 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
 	"time"
 
 	"refity/backend/internal/api"
@@ -56,15 +61,24 @@ func main() {
 	if sftpPort == "" {
 		sftpPort = "22"
 	}
+	// The pool dials cfg.FTPPort directly; an empty value would otherwise never connect now that a
+	// failed connection is retried in the background instead of being fatal.
+	cfg.FTPPort = sftpPort
 	log.Printf("Connecting to SFTP: host=%s port=%s user=%s", cfg.FTPHost, sftpPort, cfg.FTPUsername)
 
 	localRoot := "/tmp/refity"
 	localDriver := local.NewDriver(localRoot)
-	driver, err := sftp.NewDriverWithConfig(cfg)
+
+	// One connection pool serves the registry and the web API. It starts even when no SFTP login works
+	// (Storage Box down or unreachable, rejected credentials) and connects in the background behind
+	// the auth breaker, so a restart never turns into a crash loop of failed logins and the spool and
+	// cache keep being served meanwhile. The web API shares it instead of keeping its own eager
+	// connection: that connection made startup fatal and would log in outside the breaker.
+	regPool, err := sftp.NewDriverPool(cfg, 4)
 	if err != nil {
-		log.Fatalf("Failed to connect to SFTP: %v", err)
+		log.Fatalf("Invalid SFTP pool configuration: %v", err)
 	}
-	log.Println("SFTP connection established successfully")
+	regDriver := &sftp.PoolStorageDriver{Pool: regPool}
 
 	// Initialize database (use /app/data in container for consistent persistence with volume)
 	dataDir := "data"
@@ -74,6 +88,14 @@ func main() {
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		log.Printf("Warning: Failed to create data directory: %v", err)
 	}
+	// Spool and read cache live in the data dir (a volume in Docker) so pending uploads survive restarts.
+	if cfg.SpoolDir == "" {
+		cfg.SpoolDir = filepath.Join(dataDir, "spool")
+	}
+	if cfg.ReadCacheDir == "" {
+		cfg.ReadCacheDir = filepath.Join(dataDir, "cache")
+	}
+	cfg.DataDir = dataDir
 	dbPath := dataDir + "/refity.db"
 	db, err := database.NewDatabase(dbPath)
 	if err != nil {
@@ -82,8 +104,8 @@ func main() {
 	defer db.Close()
 	log.Println("Database initialized successfully")
 
-	apiRouter := api.NewAPIRouter(driver, db, cfg)
-	regRouter := registry.NewRouterWithDeps(localDriver, driver, cfg, db, apiRouter.InvalidateDashboardCache)
+	apiRouter := api.NewAPIRouter(regDriver, db, cfg)
+	regRouter := registry.NewRouterWithDeps(localDriver, regDriver, cfg, db, apiRouter.InvalidateDashboardCache)
 
 	// Create main router
 	mainRouter := http.NewServeMux()
@@ -113,9 +135,29 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	log.Printf("Backend server listening on :%s", port)
-	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("Server error: %v", err)
+	// Graceful shutdown: stop accepting requests, let in-flight ones finish, then stop the upload workers
+	// so their jobs stay on disk cleanly (they resume on the next start).
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	errCh := make(chan error, 1)
+	go func() {
+		log.Printf("Backend server listening on :%s", port)
+		errCh <- srv.ListenAndServe()
+	}()
+	select {
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("Server error: %v", err)
+		}
+	case <-ctx.Done():
+		log.Println("Shutting down...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("HTTP shutdown: %v", err)
+		}
+		cancel()
 	}
+	registry.Shutdown()
+	regPool.Close()
+	log.Println("Shutdown complete")
 }
-

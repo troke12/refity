@@ -3,23 +3,23 @@ package registry
 import (
 	"log"
 	"net/http"
+	"refity/backend/internal/config"
+	"refity/backend/internal/database"
+	"refity/backend/internal/driver/local"
+	"refity/backend/internal/driver/sftp"
 	"strings"
 	"sync"
 	"time"
-	"refity/backend/internal/config"
-	"refity/backend/internal/driver/sftp"
-	"refity/backend/internal/driver/local"
-	"refity/backend/internal/database"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	localDriver   local.StorageDriver
-	sftpDriver    sftp.StorageDriver
-	db            *database.Database
-	cfg           *config.Config
-	onImageSaved  func() // optional callback to e.g. invalidate dashboard cache
+	localDriver  local.StorageDriver
+	sftpDriver   sftp.StorageDriver
+	db           *database.Database
+	cfg          *config.Config
+	onImageSaved func() // optional callback to e.g. invalidate dashboard cache
 
 	registryAuthAttempts   = make(map[string][]time.Time)
 	registryAuthAttemptsMu sync.Mutex
@@ -97,6 +97,9 @@ func NewRouterWithDeps(localD local.StorageDriver, sftpD sftp.StorageDriver, c *
 			panic("failed to init SFTP pool: " + err.Error())
 		}
 		sftpDriver = &sftp.PoolStorageDriver{Pool: pool}
+	}
+	if err := initStorage(c); err != nil {
+		panic("failed to init upload spool / read cache: " + err.Error())
 	}
 	db = database
 	mux := http.NewServeMux()
