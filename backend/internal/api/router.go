@@ -3,10 +3,11 @@ package api
 import (
 	"net/http"
 	"strings"
-	"refity/backend/internal/driver/sftp"
-	"refity/backend/internal/database"
 	"refity/backend/internal/auth"
 	"refity/backend/internal/config"
+	"refity/backend/internal/database"
+	"refity/backend/internal/driver/sftp"
+	"refity/backend/internal/registry"
 )
 
 type APIRouter struct {
@@ -104,6 +105,13 @@ func (r *APIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			auth.AdminMiddleware(http.HandlerFunc(r.apiHandler.DeleteRepositoryHandler)).ServeHTTP(w, req)
 			return
 		}
+	}
+
+	// Storage audit (admin only): verifies remote digest blobs and removes mismatches. Long-running, so
+	// it is deliberately not on any push or pull path.
+	if path == "/api/maintenance/audit-blobs" {
+		auth.AdminMiddleware(http.HandlerFunc(registry.AuditCorruptBlobsHandler)).ServeHTTP(w, req)
+		return
 	}
 
 	// 404 for unknown routes

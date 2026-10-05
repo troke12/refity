@@ -22,6 +22,9 @@ type StorageDriver interface {
 	List(ctx context.Context, path string) ([]string, error)
 	Move(ctx context.Context, sourcePath string, destPath string) error
 	Delete(ctx context.Context, path string) error
+	// Path resolves a driver-relative path to its location on disk, so callers can hash, rename or
+	// hand the staged file to the upload spool without reading it into memory.
+	Path(path string) (string, error)
 }
 
 type Driver struct {
@@ -33,6 +36,8 @@ func NewDriver(root string) *Driver {
 }
 
 func (d *Driver) Name() string { return "local" }
+
+func (d *Driver) Path(p string) (string, error) { return d.fullPath(p) }
 
 // fullPath returns path under d.root; returns error if p escapes root (path traversal).
 func (d *Driver) fullPath(p string) (string, error) {
@@ -149,4 +154,4 @@ func (d *Driver) Delete(ctx context.Context, path string) error {
 		return err
 	}
 	return os.RemoveAll(fp)
-} 
+}

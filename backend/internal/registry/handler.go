@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -130,7 +131,7 @@ func validateBlobDigest(digest string) bool {
 }
 
 var sftpSemaphore = make(chan struct{}, 2) // max 2 upload paralel
-var sftpPathLocks sync.Map // map[string]*sync.Mutex
+var sftpPathLocks sync.Map                 // map[string]*sync.Mutex
 
 // sftpRetry wraps an SFTP operation with retry on transient connection failures.
 func sftpRetry(desc string, maxRetries int, fn func() error) error {
@@ -183,14 +184,14 @@ func RegistryHandler(w http.ResponseWriter, r *http.Request) {
 		handleBlobUploadStatus(w, r, path)
 		return
 	}
-	// /<name>/blobs/<digest> — HEAD so Docker can skip re-upload; existence = SFTP only (delete from SFTP = gone).
+	// /<name>/blobs/<digest> — HEAD so Docker can skip re-upload; existence = spool, read cache or SFTP.
 	if strings.Contains(path, "/blobs/") && r.Method == http.MethodHead {
 		handleBlobHead(w, r, path)
 		return
 	}
 	// /<name>/blobs/<digest>
 	if strings.Contains(path, "/blobs/") && r.Method == http.MethodGet {
-		handleBlobDownload(w, path)
+		handleBlobDownload(w, r, path)
 		return
 	}
 	// /<name>/manifests/<reference>
@@ -266,104 +267,47 @@ func initiateBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		}
 		blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, digest)
 		blobPath = strings.TrimLeft(blobPath, "/")
-		ctx := context.TODO()
-
-		if cfg != nil && cfg.SFTPSyncUpload {
-			// Sync mode: stream body directly to SFTP while hashing.
-			var sftpWriter sftp.FileWriter
-			err := sftpRetry("Writer("+blobPath+")", 3, func() error {
-				var innerErr error
-				sftpWriter, innerErr = sftpDriver.Writer(ctx, blobPath, false)
-				return innerErr
-			})
-			if err != nil {
-				if err == sftp.ErrRepoNotFound {
-					registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
-					return
-				}
-				log.Printf("initiateBlobUpload (monolithic sync): SFTP Writer failed: %v", err)
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte("Failed to open storage writer: " + err.Error()))
-				return
-			}
-			digester := godigest.Canonical.Digester()
-			multiWriter := io.MultiWriter(sftpWriter, digester.Hash())
-			buf := make([]byte, 1024*1024)
-			n, copyErr := io.CopyBuffer(multiWriter, r.Body, buf)
-			_ = r.Body.Close()
-			closeErr := sftpWriter.Close()
-			if closeErr != nil {
-				log.Printf("initiateBlobUpload (monolithic sync): Writer close: %v", closeErr)
-			}
-			if copyErr != nil {
-				log.Printf("initiateBlobUpload (monolithic sync): copy failed: %v", copyErr)
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Write([]byte("Failed to stream blob: " + copyErr.Error()))
-				return
-			}
-			calculated := digester.Digest()
-			if calculated != parsedDigest {
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("invalid checksum digest format (mismatch)"))
-				return
-			}
-			uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
-			w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, calculated.String()))
-			w.Header().Set("Docker-Content-Digest", calculated.String())
-			w.Header().Set("Docker-Upload-UUID", uploadID)
-			w.WriteHeader(http.StatusCreated)
-			log.Printf("initiateBlobUpload: monolithic sync upload completed %s (%d bytes)", name, n)
-			return
-		}
-
-		// Async mode: write to local staging, then upload to SFTP in background.
-		digester := godigest.Canonical.Digester()
-		localWriter, err := localDriver.Writer(ctx, blobPath)
-		if err != nil {
-			log.Printf("initiateBlobUpload (monolithic async): local Writer failed: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to open local writer: " + err.Error()))
-			return
-		}
-		multiWriter := io.MultiWriter(localWriter, digester.Hash())
-		buf := make([]byte, 1024*1024)
-		n, copyErr := io.CopyBuffer(multiWriter, r.Body, buf)
+		// Stage the body locally while it arrives (fast for the client), verify, then persist: spooled in
+		// async mode, uploaded before the response in sync mode. Staging first, instead of streaming the
+		// body straight to SFTP, is what makes the remote write retryable on another connection.
+		uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
+		stagingPath := strings.TrimLeft(fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID), "/")
+		local, err := stageBody(stagingPath, r.Body)
 		_ = r.Body.Close()
-		closeErr := localWriter.Close()
-		if closeErr != nil {
-			log.Printf("initiateBlobUpload (monolithic async): local Writer close: %v", closeErr)
-		}
-		if copyErr != nil {
-			log.Printf("initiateBlobUpload (monolithic async): copy failed: %v", copyErr)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to stream blob: " + copyErr.Error()))
-			return
-		}
-		calculated := digester.Digest()
-		if calculated != parsedDigest {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid checksum digest format (mismatch)"))
-			return
-		}
-		// Read back from local and upload to SFTP in background
-		localData, err := localDriver.GetContent(ctx, blobPath)
 		if err != nil {
-			log.Printf("initiateBlobUpload (monolithic async): read local failed: %v", err)
+			log.Printf("initiateBlobUpload (monolithic): staging failed: %v", err)
+			_ = localDriver.Delete(context.TODO(), stagingPath)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to stream blob: " + err.Error()))
+			return
+		}
+		calculated, n, err := hashFile(local)
+		if err != nil {
+			log.Printf("initiateBlobUpload (monolithic): hashing failed: %v", err)
+			_ = localDriver.Delete(context.TODO(), stagingPath)
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("Failed to read blob from local"))
 			return
 		}
-		go func() {
-			if err := uploadBlobToSFTP(ctx, blobPath, blobPath, localData); err != nil {
-				log.Printf("initiateBlobUpload (monolithic async): SFTP upload failed: %v", err)
-			}
-		}()
-		uploadID := strconv.FormatInt(time.Now().UnixNano(), 10)
+		if calculated != parsedDigest {
+			_ = localDriver.Delete(context.TODO(), stagingPath)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("invalid checksum digest format (mismatch)"))
+			return
+		}
+		blobPath = strings.TrimLeft(fmt.Sprintf("registry/%s/blobs/%s", name, calculated.String()), "/")
+		mode, err := persistBlob(local, blobPath, n, calculated.String())
+		if err != nil {
+			log.Printf("initiateBlobUpload (monolithic): persisting %s failed: %v", blobPath, err)
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Failed to upload blob to storage: " + err.Error()))
+			return
+		}
 		w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, calculated.String()))
 		w.Header().Set("Docker-Content-Digest", calculated.String())
 		w.Header().Set("Docker-Upload-UUID", uploadID)
 		w.WriteHeader(http.StatusCreated)
-		log.Printf("initiateBlobUpload: monolithic async upload completed %s (%d bytes)", name, n)
+		log.Printf("initiateBlobUpload: monolithic %s upload completed %s (%d bytes)", mode, name, n)
 		return
 	}
 
@@ -538,7 +482,7 @@ func handleBlobUploadStatus(w http.ResponseWriter, r *http.Request, path string)
 	}
 }
 
-// handleBlobHead returns 200 + Docker-Content-Digest + Content-Length if blob exists on SFTP, else 404. Source of truth = SFTP only.
+// handleBlobHead returns 200 + Docker-Content-Digest + Content-Length if the blob exists in the upload spool, the read cache or on SFTP, else 404.
 func handleBlobHead(w http.ResponseWriter, r *http.Request, path string) {
 	name := strings.TrimPrefix(strings.TrimSuffix(strings.Split(path, "/blobs/")[0], "/"), "/")
 	if !validateRepoName(name) {
@@ -552,21 +496,10 @@ func handleBlobHead(w http.ResponseWriter, r *http.Request, path string) {
 	}
 	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, blobPart)
 	blobPath = strings.TrimLeft(blobPath, "/")
-	ctx := context.TODO()
-	fi, err := sftpDriver.Stat(ctx, blobPath)
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	type sizeable interface{ Size() int64 }
-	if s, ok := fi.(sizeable); ok {
-		w.Header().Set("Content-Length", strconv.FormatInt(s.Size(), 10))
-	}
-	w.Header().Set("Docker-Content-Digest", blobPart)
-	w.WriteHeader(http.StatusOK)
+	serveBlob(w, r, blobPath, blobPart)
 }
 
-func handleBlobDownload(w http.ResponseWriter, path string) {
+func handleBlobDownload(w http.ResponseWriter, r *http.Request, path string) {
 	name := strings.TrimPrefix(strings.TrimSuffix(strings.Split(path, "/blobs/")[0], "/"), "/")
 	if !validateRepoName(name) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -581,15 +514,7 @@ func handleBlobDownload(w http.ResponseWriter, path string) {
 	}
 	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, blobPart)
 	blobPath = strings.TrimLeft(blobPath, "/")
-	blob, err := sftpDriver.GetContent(context.TODO(), blobPath)
-	if err != nil {
-		registryError(w, "BLOB_UNKNOWN", "blob not found", http.StatusNotFound)
-		return
-	}
-	w.Header().Set("Content-Length", strconv.Itoa(len(blob)))
-	w.Header().Set("Docker-Content-Digest", blobPart)
-	w.WriteHeader(http.StatusOK)
-	w.Write(blob)
+	serveBlob(w, r, blobPath, blobPart)
 }
 
 func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
@@ -659,8 +584,13 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 			for _, m := range ml.Manifests {
 				manifestPath := fmt.Sprintf("registry/%s/manifests/%s", name, m.Digest)
 				manifestPath = strings.TrimLeft(manifestPath, "/")
-				_, err := sftpDriver.GetContent(context.TODO(), manifestPath)
+				exists, err := objectExistsErr(context.TODO(), manifestPath)
 				if err != nil {
+					// Cannot tell whether the child exists: retryable, not a client error.
+					storageUnavailable(w, r, err)
+					return
+				}
+				if !exists {
 					missing = append(missing, m.Digest)
 				}
 			}
@@ -673,38 +603,28 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		// Hitung digest manifest
 		manifestDigest := godigest.FromBytes(manifest)
 		digestStr := manifestDigest.String()
-		
-		// Simpan manifest dengan nama tag (ref)
-		err = localDriver.PutContent(context.TODO(), manifestPath, manifest, nil)
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to write manifest to local"))
-			return
-		}
-		
-		// Simpan juga manifest dengan nama digest untuk akses via digest
+
 		manifestDigestPath := fmt.Sprintf("registry/%s/manifests/%s", name, digestStr)
 		manifestDigestPath = strings.TrimLeft(manifestDigestPath, "/")
-		err = localDriver.PutContent(context.TODO(), manifestDigestPath, manifest, nil)
-		if err != nil {
-			log.Printf("Warning: failed to write manifest with digest name: %v", err)
-			// Continue anyway, tag-based access should still work
-		}
-		
-		ctx := context.TODO()
-		doManifestUpload := func() error {
-			return uploadManifestToSFTP(ctx, manifestPath, manifestDigestPath, manifest)
-		}
 
+		ctx := context.TODO()
 		if cfg != nil && cfg.SFTPSyncUpload {
-			if err := doManifestUpload(); err != nil {
+			if err := uploadManifestToSFTP(ctx, manifestPath, manifestDigestPath, manifest); err != nil {
 				log.Printf("handleManifest (sync): SFTP upload failed: %v", err)
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte("Failed to upload manifest to storage: " + err.Error()))
 				return
 			}
 		} else {
-			go doManifestUpload()
+			// Spooled durably before answering, so a pull right after the push finds the tag locally.
+			for _, p := range []string{manifestPath, manifestDigestPath} {
+				if err := persistManifest(manifest, p); err != nil {
+					log.Printf("handleManifest: persisting %s failed: %v", p, err)
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("Failed to upload manifest to storage: " + err.Error()))
+					return
+				}
+			}
 		}
 
 		// Save image metadata to database only for real tags (not digest refs like sha256:...)
@@ -716,19 +636,21 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 				}
 			}()
 		}
-		
+
 		w.Header().Set("Docker-Content-Digest", manifestDigest.String())
 		w.WriteHeader(http.StatusCreated)
 		w.Write([]byte("Manifest uploaded"))
-	case http.MethodGet:
+	case http.MethodGet, http.MethodHead:
 		// Coba ambil manifest dengan ref yang diberikan (bisa tag atau digest)
-		manifest, err := sftpDriver.GetContent(context.TODO(), manifestPath)
+		manifest, err := readManifest(context.TODO(), manifestPath)
+		// A storage failure is not "manifest unknown": Docker treats 404 as permanent, 503 as retryable.
+		storageErr := err != nil && !isNotFound(err)
 		if err != nil {
 			// Fallback: coba cari via database
 			if db != nil {
 				var img *database.Image
 				var dbErr error
-				
+
 				if strings.HasPrefix(ref, "sha256:") {
 					// Ref adalah digest, cari image dengan digest ini
 					img, dbErr = db.GetImageByDigest(ref)
@@ -736,32 +658,37 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 					// Ref adalah tag, cari image dengan tag ini
 					img, dbErr = db.GetImage(name, ref)
 				}
-				
+
 				if dbErr == nil && img != nil {
 					// Coba ambil manifest dengan nama tag (untuk backward compatibility)
 					tagPath := fmt.Sprintf("registry/%s/manifests/%s", name, img.Tag)
 					tagPath = strings.TrimLeft(tagPath, "/")
-					manifest, err = sftpDriver.GetContent(context.TODO(), tagPath)
+					manifest, err = readManifest(context.TODO(), tagPath)
 					if err == nil {
 						manifestPath = tagPath
 					} else {
 						// Jika tidak ditemukan dengan tag, coba dengan digest
 						digestPath := fmt.Sprintf("registry/%s/manifests/%s", name, img.Digest)
 						digestPath = strings.TrimLeft(digestPath, "/")
-						manifest, err = sftpDriver.GetContent(context.TODO(), digestPath)
+						manifest, err = readManifest(context.TODO(), digestPath)
 						if err == nil {
 							manifestPath = digestPath
 						}
 					}
 				}
 			}
-			
+
 			if err != nil {
+				if storageErr || !isNotFound(err) {
+					storageUnavailable(w, r, err)
+					return
+				}
 				registryError(w, "MANIFEST_UNKNOWN", "manifest not found", http.StatusNotFound)
 				return
 			}
 		}
-		
+
+		storedDigest := godigest.FromBytes(manifest)
 		// Rewrite Docker v2 media types to OCI so daemon accepts (pull expects OCI when configured).
 		manifest = rewriteManifestToOCI(manifest)
 
@@ -783,8 +710,11 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 		// Save OCI manifest by digest so pull-by-digest conforms to distribution spec (avoids "falling back to pull by tag" warning).
 		ociDigestPath := fmt.Sprintf("registry/%s/manifests/%s", name, manifestDigest.String())
 		ociDigestPath = strings.TrimLeft(ociDigestPath, "/")
-		if _, err := sftpDriver.Stat(context.TODO(), ociDigestPath); err != nil {
-			_ = sftpDriver.PutContent(context.TODO(), ociDigestPath, manifest, nil)
+		// When the rewrite changed nothing, the digest copy was already stored at PUT time. Otherwise it is
+		// written in the background: checking the remote can take up to the acquire timeout during an
+		// outage, and a pull must not wait for a cosmetic copy.
+		if manifestDigest != storedDigest {
+			goOCICopy(ociDigestPath, manifest)
 		}
 		w.WriteHeader(http.StatusOK)
 		w.Write(manifest)
@@ -795,13 +725,28 @@ func handleManifest(w http.ResponseWriter, r *http.Request, path string) {
 
 func handleCatalog(w http.ResponseWriter) {
 	entries, err := sftpDriver.List(context.TODO(), "registry")
-	if err != nil {
+	// Names that so far exist only in the upload spool (pushed, not yet on SFTP).
+	var pending []string
+	if sp := blobSpool(); sp != nil {
+		for _, job := range sp.Pending("registry/") {
+			if top, _, ok := strings.Cut(strings.TrimPrefix(job.Remote, "registry/"), "/"); ok && top != "" {
+				pending = append(pending, top)
+			}
+		}
+	}
+	if err != nil && len(pending) == 0 {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to list repositories"))
 		return
 	}
 	repos := []string{}
-	repos = append(repos, entries...)
+	seen := map[string]bool{}
+	for _, e := range append(entries, pending...) {
+		if !seen[e] {
+			seen[e] = true
+			repos = append(repos, e)
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"repositories":` + toJSONString(repos) + `}`))
@@ -865,370 +810,107 @@ func commitBlobUpload(w http.ResponseWriter, r *http.Request, path string) {
 		}
 	}
 
-	blobPath := fmt.Sprintf("registry/%s/blobs/%s", name, digest)
-	blobPath = strings.TrimLeft(blobPath, "/")
+	parsedDigest, parseErr := godigest.Parse(digest)
+	if parseErr != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("invalid checksum digest format (parse)"))
+		return
+	}
+	blobPath := strings.TrimLeft(fmt.Sprintf("registry/%s/blobs/%s", name, parsedDigest.String()), "/")
 	uploadPath := fmt.Sprintf("registry/%s/blobs/uploads/%s", name, uploadID)
 	uploadPath = strings.TrimLeft(uploadPath, "/")
 	ctx := context.TODO()
 
-	// Sync mode + monolithic upload: stream r.Body directly to SFTP while hashing.
-	// Client progress bar then moves in sync with our SFTP write (we read body only as fast as we write to SFTP).
-	if cfg != nil && cfg.SFTPSyncUpload && r.Body != nil {
-		var sftpWriter sftp.FileWriter
-		err := sftpRetry("Writer("+blobPath+")", 3, func() error {
-			var innerErr error
-			sftpWriter, innerErr = sftpDriver.Writer(ctx, blobPath, false)
-			return innerErr
-		})
-		if err != nil {
-			if err == sftp.ErrRepoNotFound {
-				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
-				return
-			}
-			log.Printf("commitBlobUpload (sync stream): SFTP Writer failed: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to open storage writer: " + err.Error()))
-			return
-		}
-		digester := godigest.Canonical.Digester()
-		multiWriter := io.MultiWriter(sftpWriter, digester.Hash())
-		buf := make([]byte, 256*1024)
-		n, copyErr := io.CopyBuffer(multiWriter, r.Body, buf)
-		closeErr := sftpWriter.Close()
-		if closeErr != nil {
-			log.Printf("commitBlobUpload (sync stream): Writer close: %v", closeErr)
-		}
-		if copyErr != nil {
-			log.Printf("commitBlobUpload (sync stream): copy failed: %v", copyErr)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to stream blob: " + copyErr.Error()))
-			return
-		}
-		if n > 0 {
-			calculated := digester.Digest()
-			parsedDigest, parseErr := godigest.Parse(digest)
-			if parseErr != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("invalid checksum digest format (parse)"))
-				return
-			}
-			if calculated != parsedDigest {
-				w.WriteHeader(http.StatusBadRequest)
-				w.Write([]byte("invalid checksum digest format (mismatch)"))
-				return
-			}
-			w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, calculated.String()))
-			w.Header().Set("Docker-Content-Digest", calculated.String())
-			w.WriteHeader(http.StatusCreated)
-			w.Write([]byte("Blob committed (sync stream to SFTP, digest validated)"))
-			return
-		}
-		// n == 0: empty body (chunked upload), blob was sent via PATCHes — read from local, validate, upload to SFTP. Or GET with digest and no PATCH (empty blob only).
-		localData, err := localDriver.GetContent(ctx, uploadPath)
-		if err != nil {
-			emptyDigest := godigest.FromBytes(nil).String()
-			parsedDigest, parseErr := godigest.Parse(digest)
-			if parseErr == nil && parsedDigest.String() == emptyDigest {
-				localData = []byte{}
-				if putErr := localDriver.PutContent(ctx, blobPath, localData, nil); putErr != nil && putErr != sftp.ErrRepoNotFound {
-					log.Printf("commitBlobUpload (sync empty): failed to write empty blob: %v", putErr)
-					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte("Failed to write empty blob"))
-					return
-				}
-				if err := uploadBlobToSFTP(ctx, blobPath, blobPath, localData); err != nil {
-					log.Printf("commitBlobUpload (sync empty): SFTP upload failed: %v", err)
-					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte("Failed to upload blob to storage"))
-					return
-				}
-				w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, emptyDigest))
-				w.Header().Set("Docker-Content-Digest", emptyDigest)
-				w.WriteHeader(http.StatusCreated)
-				w.Write([]byte("Blob committed (empty)"))
-				return
-			}
-			// No local upload file and not empty blob: client may be mounting from existing blob (no PATCH sent). If blob exists on SFTP, accept.
-			if sftpDriver != nil {
-				if _, statErr := sftpDriver.Stat(ctx, blobPath); statErr == nil {
-					parsedDigest, parseErr := godigest.Parse(digest)
-					if parseErr == nil {
-						w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, parsedDigest.String()))
-						w.Header().Set("Docker-Content-Digest", parsedDigest.String())
-						w.WriteHeader(http.StatusCreated)
-						w.Write([]byte("Blob committed (mount from existing)"))
-						return
-					}
-				}
-			}
-			log.Printf("commitBlobUpload (sync chunked): failed to read local: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to read blob from local: " + err.Error()))
-			return
-		}
-		calculated := godigest.FromBytes(localData)
-		parsedDigest, parseErr := godigest.Parse(digest)
-		if parseErr != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid checksum digest format (parse)"))
-			return
-		}
-		if calculated != parsedDigest {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid checksum digest format (mismatch)"))
-			return
-		}
-		if err := uploadBlobToSFTP(ctx, uploadPath, blobPath, localData); err != nil {
-			log.Printf("commitBlobUpload (sync chunked): SFTP upload failed: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to upload blob to storage: " + err.Error()))
-			return
-		}
-		w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, calculated.String()))
-		w.Header().Set("Docker-Content-Digest", calculated.String())
-		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte("Blob committed (sync chunked to SFTP, digest validated)"))
-		return
-	}
-
-	// Non-streaming path: read body (or use existing local from PATCHes)
-	body, err := io.ReadAll(r.Body)
+	// A PUT body is the final chunk of the upload (all of it for a monolithic PUT), so it is appended to
+	// whatever earlier PATCHes staged. The blob is then verified by streaming the staged file through
+	// sha256 and persisted from disk; it is never held in memory.
+	local, err := stageBody(uploadPath, r.Body)
 	if err != nil {
-		log.Printf("commitBlobUpload: failed to read blob data: %v", err)
+		log.Printf("commitBlobUpload: failed to stage blob data: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Failed to read blob data: " + err.Error()))
 		return
 	}
-	var localData []byte
-	if len(body) == 0 {
-		// Validate digest before move so we don't leave a bad blob at blobPath on mismatch.
-		localData, err = localDriver.GetContent(ctx, uploadPath)
-		if err != nil {
-			// GET with digest but no PATCH: client commits without sending data (e.g. empty layer or mount). Only valid for empty blob.
-			emptyDigest := godigest.FromBytes(nil).String()
-			parsedDigest, parseErr := godigest.Parse(digest)
-			if parseErr == nil && parsedDigest.String() == emptyDigest {
-				localData = []byte{}
-				if putErr := localDriver.PutContent(ctx, blobPath, localData, nil); putErr != nil && putErr != sftp.ErrRepoNotFound {
-					log.Printf("commitBlobUpload: failed to write empty blob: %v", putErr)
-					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte("Failed to write empty blob"))
-					return
-				}
-				if err := uploadBlobToSFTP(ctx, blobPath, blobPath, localData); err != nil {
-					log.Printf("commitBlobUpload: SFTP upload empty blob failed: %v", err)
-					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte("Failed to upload blob to storage"))
-					return
-				}
-				w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, emptyDigest))
-				w.Header().Set("Docker-Content-Digest", emptyDigest)
-				w.WriteHeader(http.StatusCreated)
-				w.Write([]byte("Blob committed (empty)"))
+	st, statErr := os.Stat(local)
+	if statErr != nil || st.Size() == 0 {
+		_ = localDriver.Delete(ctx, uploadPath)
+		emptyDigest := godigest.FromBytes(nil)
+		if parsedDigest == emptyDigest {
+			// GET/PUT with digest but no data: only valid for the empty blob.
+			if err := localDriver.PutContent(ctx, uploadPath, []byte{}, nil); err != nil {
+				log.Printf("commitBlobUpload: failed to write empty blob: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Failed to write empty blob"))
 				return
 			}
-			// Mount from existing blob on SFTP (no PATCH sent).
-			if sftpDriver != nil {
-				if _, statErr := sftpDriver.Stat(ctx, blobPath); statErr == nil {
-					parsedDigest, parseErr := godigest.Parse(digest)
-					if parseErr == nil {
-						w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, parsedDigest.String()))
-						w.Header().Set("Docker-Content-Digest", parsedDigest.String())
-						w.WriteHeader(http.StatusCreated)
-						w.Write([]byte("Blob committed (mount from existing)"))
-						return
-					}
-				}
-			}
-			log.Printf("commitBlobUpload: failed to read upload from local: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to read blob from local: " + err.Error()))
-			return
-		}
-		calculated := godigest.FromBytes(localData)
-		parsedDigest, parseErr := godigest.Parse(digest)
-		if parseErr != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid checksum digest format (parse)"))
-			return
-		}
-		if calculated != parsedDigest {
-			log.Printf("commitBlobUpload: DIGEST_INVALID upload size %d, expected %s, got %s (incomplete chunked upload?)", len(localData), parsedDigest, calculated)
-			registryError(w, "DIGEST_INVALID", fmt.Sprintf("blob upload incomplete or digest mismatch (upload size %d)", len(localData)), 400)
-			return
-		}
-		err = localDriver.Move(ctx, uploadPath, blobPath)
-		if err != nil {
-			if err == sftp.ErrRepoNotFound {
-				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
+			if _, err := persistBlob(local, blobPath, 0, emptyDigest.String()); err != nil {
+				log.Printf("commitBlobUpload: persisting empty blob failed: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("Failed to upload blob to storage"))
 				return
 			}
-			log.Printf("commitBlobUpload: failed to move blob on local: %v (from: %s, to: %s)", err, uploadPath, blobPath)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to move blob on local: " + err.Error()))
+			w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, emptyDigest))
+			w.Header().Set("Docker-Content-Digest", emptyDigest.String())
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte("Blob committed (empty)"))
 			return
 		}
-	} else {
-		err = localDriver.PutContent(ctx, blobPath, body, nil)
-		if err != nil {
-			if err == sftp.ErrRepoNotFound {
-				registryError(w, "NAME_INVALID", fmt.Sprintf("repository name %s not found", name), 404)
-				return
-			}
-			log.Printf("commitBlobUpload: failed to write blob to local: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to write blob to local: " + err.Error()))
+		// No data was sent: the client may be mounting a blob that already exists (spool, cache or remote).
+		if sftpDriver != nil && objectExists(ctx, blobPath) {
+			w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, parsedDigest.String()))
+			w.Header().Set("Docker-Content-Digest", parsedDigest.String())
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte("Blob committed (mount from existing)"))
 			return
 		}
-		localData, err = localDriver.GetContent(ctx, blobPath)
-		if err != nil {
-			log.Printf("commitBlobUpload: failed to read blob from local: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to read blob from local: " + err.Error()))
-			return
-		}
-		calculated := godigest.FromBytes(localData)
-		parsedDigest, parseErr := godigest.Parse(digest)
-		if parseErr != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("invalid checksum digest format (parse)"))
-			return
-		}
-		if calculated != parsedDigest {
-			log.Printf("commitBlobUpload: DIGEST_INVALID (PUT with body) size %d", len(body))
-			registryError(w, "DIGEST_INVALID", "digest mismatch", 400)
-			return
-		}
+		log.Printf("commitBlobUpload: no staged data for %s", uploadPath)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to read blob from local: no data uploaded"))
+		return
+	}
+	calculated, size, err := hashFile(local)
+	if err != nil {
+		log.Printf("commitBlobUpload: failed to hash staged blob: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to read blob from local: " + err.Error()))
+		return
+	}
+	if calculated != parsedDigest {
+		log.Printf("commitBlobUpload: DIGEST_INVALID upload size %d, expected %s, got %s (incomplete chunked upload?)", size, parsedDigest, calculated)
+		_ = localDriver.Delete(ctx, uploadPath)
+		registryError(w, "DIGEST_INVALID", fmt.Sprintf("blob upload incomplete or digest mismatch (upload size %d)", size), 400)
+		return
 	}
 
-	calculated := godigest.FromBytes(localData)
-	doBlobUpload := func() error {
-		return uploadBlobToSFTP(ctx, blobPath, blobPath, localData)
-	}
-
-	if cfg != nil && cfg.SFTPSyncUpload {
-		if err := doBlobUpload(); err != nil {
-			log.Printf("commitBlobUpload (sync): SFTP upload failed: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Failed to upload blob to storage: " + err.Error()))
-			return
-		}
-	} else {
-		go doBlobUpload()
+	mode, err := persistBlob(local, blobPath, size, calculated.String())
+	if err != nil {
+		log.Printf("commitBlobUpload (%s): SFTP upload failed: %v", mode, err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Failed to upload blob to storage: " + err.Error()))
+		return
 	}
 
 	w.Header().Set("Location", fmt.Sprintf("/v2/%s/blobs/%s", name, calculated.String()))
 	w.Header().Set("Docker-Content-Digest", calculated.String())
 	w.WriteHeader(http.StatusCreated)
-	if cfg != nil && cfg.SFTPSyncUpload {
+	if mode == "sync" {
 		w.Write([]byte("Blob committed (sync SFTP, digest validated)"))
 	} else {
 		w.Write([]byte("Blob committed (async SFTP, digest validated)"))
 	}
 }
 
-// uploadBlobToSFTP uploads blob data to SFTP (with semaphore, lock, retry). Call in goroutine for async or inline for sync.
-func uploadBlobToSFTP(ctx context.Context, localPath, sftpPath string, data []byte) error {
-	sftpSemaphore <- struct{}{}
-	defer func() { <-sftpSemaphore }()
-
-	lockIface, _ := sftpPathLocks.LoadOrStore(sftpPath, &sync.Mutex{})
-	pathLock := lockIface.(*sync.Mutex)
-	pathLock.Lock()
-	defer pathLock.Unlock()
-
-	wantSize := int64(len(data))
-	if fi, err := sftpDriver.Stat(ctx, sftpPath); err == nil {
-		type sizeable interface{ Size() int64 }
-		var existing int64
-		if s, ok := fi.(sizeable); ok {
-			existing = s.Size()
-			if existing == wantSize {
-				log.Printf("[SFTP] SKIP: blob already exists (same size): %s", sftpPath)
-				_ = localDriver.Delete(ctx, localPath)
-				return nil
-			}
-		}
-		_ = sftpDriver.Delete(ctx, sftpPath)
-		log.Printf("[SFTP] Overwrite: replacing blob (existing %d vs %d): %s", existing, wantSize, sftpPath)
-	}
-
-	log.Printf("[SFTP] Start upload: %s -> %s", localPath, sftpPath)
-	maxRetry := 5
-	var err error
-	for i := 0; i < maxRetry; i++ {
-		err = sftpDriver.PutContent(ctx, sftpPath, data, func(written, total int64) {
-			percent := int64(0)
-			if total > 0 {
-				percent = written * 100 / total
-			}
-			log.Printf("[SFTP] Progress: %s -> %s: %d%% (%d/%d bytes)", localPath, sftpPath, percent, written, total)
-		})
-		if err == nil {
-			log.Printf("[SFTP] Success upload: %s -> %s (try %d)", localPath, sftpPath, i+1)
-			break
-		}
-		backoff := 1 << i
-		if backoff > 16 {
-			backoff = 16
-		}
-		log.Printf("[SFTP] Retry %d: failed to upload: %v, retry in %ds", i+1, err, backoff)
-		time.Sleep(time.Duration(backoff) * time.Second)
-	}
-	if err != nil {
-		log.Printf("[SFTP] FINAL FAIL: %v", err)
-		return err
-	}
-	_ = localDriver.Delete(ctx, localPath)
-	return nil
-}
-
-// uploadManifestToSFTP uploads manifest to SFTP (tag + digest paths). Call in goroutine for async or inline for sync.
+// uploadManifestToSFTP writes a manifest to SFTP now (tag + digest paths), each atomically (local temp,
+// remote temp, verify, rename) so a failed write never truncates the version already there.
 func uploadManifestToSFTP(ctx context.Context, tagPath, digestPath string, data []byte) error {
 	sftpSemaphore <- struct{}{}
 	defer func() { <-sftpSemaphore }()
-
-	maxRetry := 5
-
-	// Upload by tag path
-	lockIface, _ := sftpPathLocks.LoadOrStore(tagPath, &sync.Mutex{})
-	pathLock := lockIface.(*sync.Mutex)
-	pathLock.Lock()
-	log.Printf("[SFTP] Start upload manifest (tag): %s", tagPath)
-	var err error
-	for i := 0; i < maxRetry; i++ {
-		err = sftpDriver.PutContent(ctx, tagPath, data, nil)
-		if err == nil {
-			log.Printf("[SFTP] Success manifest (tag): %s (try %d)", tagPath, i+1)
-			break
+	for _, p := range []string{tagPath, digestPath} {
+		if err := putManifestDirect(data, p); err != nil {
+			log.Printf("[SFTP] FINAL FAIL manifest %s: %v", p, err)
+			return err
 		}
-		log.Printf("[SFTP] Retry %d manifest (tag): %v", i+1, err)
-		time.Sleep(2 * time.Second)
-	}
-	pathLock.Unlock()
-	if err != nil {
-		log.Printf("[SFTP] FINAL FAIL manifest (tag): %v", err)
-		return err
-	}
-
-	// Upload by digest path
-	lockIface2, _ := sftpPathLocks.LoadOrStore(digestPath, &sync.Mutex{})
-	pathLock2 := lockIface2.(*sync.Mutex)
-	pathLock2.Lock()
-	log.Printf("[SFTP] Start upload manifest (digest): %s", digestPath)
-	for i := 0; i < maxRetry; i++ {
-		err = sftpDriver.PutContent(ctx, digestPath, data, nil)
-		if err == nil {
-			log.Printf("[SFTP] Success manifest (digest): %s (try %d)", digestPath, i+1)
-			break
-		}
-		log.Printf("[SFTP] Retry %d manifest (digest): %v", i+1, err)
-		time.Sleep(2 * time.Second)
-	}
-	pathLock2.Unlock()
-	if err != nil {
-		log.Printf("[SFTP] FINAL FAIL manifest (digest): %v", err)
-		return err
+		log.Printf("[SFTP] Success manifest: %s", p)
 	}
 	return nil
 }
@@ -1269,8 +951,6 @@ func handleSignatures(w http.ResponseWriter, r *http.Request, path string) {
 	}
 }
 
-
-
 func registryError(w http.ResponseWriter, code, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -1293,7 +973,21 @@ func handleTagsList(w http.ResponseWriter, path string) {
 	manifestDir := "registry/" + repo + "/manifests"
 	manifestDir = strings.TrimLeft(manifestDir, "/")
 	allEntries, err := sftpDriver.List(context.TODO(), manifestDir)
-	if err != nil {
+	// Include tags pushed moments ago whose manifests are still in the upload spool.
+	var pending []string
+	if sp := blobSpool(); sp != nil {
+		for _, job := range sp.Pending(manifestDir + "/") {
+			pending = append(pending, remoteBase(job.Remote))
+		}
+	}
+	if err != nil && !isNotFound(err) && len(pending) == 0 {
+		// Nothing to show locally either: report the outage. When tags are spooled, they are listed
+		// (a freshly pushed tag must stay visible while the Storage Box is unreachable).
+		log.Printf("[REGISTRY] tags/list %s: storage unavailable: %v", repo, err)
+		registryError(w, "UNAVAILABLE", "storage backend temporarily unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if err != nil && len(pending) == 0 {
 		w.WriteHeader(http.StatusNotFound)
 		resp := map[string]interface{}{
 			"errors": []map[string]interface{}{
@@ -1303,12 +997,16 @@ func handleTagsList(w http.ResponseWriter, path string) {
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-	// Only return actual tag names; exclude digest-named manifest files (sha256:...)
-	tags := make([]string, 0, len(allEntries))
-	for _, e := range allEntries {
-		if !strings.HasPrefix(e, "sha256:") {
-			tags = append(tags, e)
+	// Only return actual tag names; exclude digest-named manifest files (sha256:...) and in-progress
+	// upload temp files (<name>.uploading-<token>).
+	tags := make([]string, 0, len(allEntries)+len(pending))
+	seen := map[string]bool{}
+	for _, e := range append(allEntries, pending...) {
+		if strings.HasPrefix(e, "sha256:") || strings.Contains(e, ".uploading-") || seen[e] {
+			continue
 		}
+		seen[e] = true
+		tags = append(tags, e)
 	}
 	resp := map[string]interface{}{
 		"name": repo,
@@ -1354,7 +1052,7 @@ func saveImageToDatabase(name, tag, digest string, manifestData []byte) error {
 				if digestStr == "" {
 					continue
 				}
-				subManifestBytes, err := sftpDriver.GetContent(context.TODO(), manifestPathBase+digestStr)
+				subManifestBytes, err := readManifest(context.TODO(), manifestPathBase+digestStr)
 				if err != nil {
 					continue
 				}
@@ -1410,4 +1108,4 @@ func saveImageToDatabase(name, tag, digest string, manifestData []byte) error {
 		onImageSaved()
 	}
 	return nil
-} 
+}
